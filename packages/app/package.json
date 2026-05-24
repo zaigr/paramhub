@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@paramhub/provider-aws-ssm": "workspace:*",
     "@paramhub/types": "workspace:*",
     "clipboardy": "^4.0.0",
     "fuse.js": "^7.0.0",

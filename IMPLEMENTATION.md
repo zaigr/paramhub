@@ -355,9 +355,90 @@ node packages/app/dist/cli.js  # Open an item → details, reveal (r), copy (c/y
 
 ---
 
-## Phase 3 — AWS SSM Provider
+## Phase 3 — AWS SSM Provider ✅ COMPLETE
 
-**Status:** Not started
+**Status:** Done  
+**Deliverable verified:** `@paramhub/provider-aws-ssm` implements the full `Provider` contract
+against AWS SDK v3 (read + write + region/profile switching) and passes the shared conformance
+suite (25 tests) plus 9 provider-specific tests, all against a mocked AWS SDK. The app boots the
+real provider when `PARAMHUB_PROVIDER=aws-ssm` is set; the mock remains the default.
+
+### What was implemented
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Package setup | ✅ | AWS SDK (`client-ssm`, `client-sts`, `credential-providers`), `@smithy/shared-ini-file-loader`, `clipboardy` deps; `vitest` + `aws-sdk-client-mock` dev deps; `vitest.config.ts` |
+| `search()` | ✅ | `GetParametersByPath` (recursive) when `pathPrefix` given, else `DescribeParameters` with a `Name Contains` filter; AWS `NextToken` pagination |
+| `getItem()` / `getValue()` | ✅ | `DescribeParameters` (Equals filter) for metadata + best-effort `ListTagsForResource`; `GetParameter` with `WithDecryption` for values |
+| `getItemDetails()` | ✅ | Name, Type, ARN, Tier, Data Type, Version, Last Modified (+ user), KMS Key ID (secure), Tags |
+| `updateValue()` / `createItem()` / `deleteItem()` | ✅ | `PutParameter` (Overwrite for update, type-mapped for create), `DeleteParameter` |
+| Region & profile switching | ✅ | Re-instantiates SSM/STS clients, resets cached account |
+| `getCommands()` | ✅ | `aws-ssm:copy-arn` (clipboardy, gated on selected item) |
+| Cross-platform profile resolution | ✅ | `resolveProfile()` via `loadSharedConfigFiles`: configured → `default` → first available → undefined |
+| Conformance tests (mocked AWS) | ✅ | Stateful in-memory store backing `aws-sdk-client-mock`; conformance + unit tests |
+| App wiring (env switch) | ✅ | `cli.ts` selects factory by `PARAMHUB_PROVIDER`; passes `AWS_REGION`/`AWS_PROFILE` |
+
+### Files created
+
+```
+packages/provider-aws-ssm/
+├── src/
+│   ├── auth.ts         # SSM/STS client construction (fromNodeProviderChain)
+│   ├── config.ts       # config schema, parseConfig, cross-platform resolveProfile/listProfiles
+│   ├── mapper.ts       # SSM<->ItemType, parameterToItem, metadataToItem, buildDetailFields
+│   ├── commands.ts     # aws-ssm:copy-arn provider command
+│   ├── provider.ts     # AwsSsmProvider + AwsSsmProviderFactory
+│   └── index.ts        # exports (replaced placeholder)
+├── tests/
+│   └── aws-ssm-provider.test.ts   # stateful aws-sdk-client-mock + conformance + unit tests
+└── vitest.config.ts
+```
+
+### Files modified
+
+```
+packages/provider-aws-ssm/package.json  # AWS SDK + smithy + clipboardy deps, vitest/aws-sdk-client-mock, test script
+packages/app/package.json                # added @paramhub/provider-aws-ssm workspace dep
+packages/app/src/cli.ts                  # PARAMHUB_PROVIDER env switch (mock default)
+packages/types/tsup.config.ts            # external: ['vitest'] (see key decision below)
+```
+
+### Key design decisions
+
+- **Search routing** — `pathPrefix` → `GetParametersByPath` (recursive, max 10); otherwise
+  `DescribeParameters` (max 50) with a server-side `Name Contains` filter from `query`. Values are
+  never returned by search (loaded lazily via `getValue`)
+- **ARN synthesis** — `DescribeParameters` `ParameterMetadata` omits ARN on older API shapes, so
+  `metadataToItem` synthesizes `arn:aws:ssm:<region>:<account>:parameter<name>` when the account is
+  known (account comes from a lazy, best-effort `STS GetCallerIdentity`, cached)
+- **Cross-platform profiles** — profile resolution and `getAvailableProfiles()` use
+  `@smithy/shared-ini-file-loader`'s `loadSharedConfigFiles` (honors `HOME`/`USERPROFILE`,
+  `AWS_CONFIG_FILE`, etc.) rather than hand-building `~/.aws` paths; falls back gracefully when no
+  config files exist
+- **Type mapping** — SSM `String`/`SecureString`/`StringList` ↔ `'string'`/`'secure'`/`'list'`;
+  `json`/`binary` map back to `String`. `supportedItemTypes` is `['string','secure','list']`
+- **`external: ['vitest']` in the types build** — tsup was bundling vitest (a devDependency) into
+  `@paramhub/types/dist/testing/index.js`. A bundled vitest copy registers `describe`/`it` against a
+  detached runner, so the conformance suite silently collected **zero** tests in any external
+  consumer. Externalizing vitest makes the dist use the consumer's runner instance. (The types
+  package's own test imports from `src`, which is why this was latent until now)
+- **Provider command status** — provider commands receive only `CommandContext` and cannot push a
+  status toast (same limitation as the mock); `copy-arn`'s clipboard write still runs
+- **Mocked conformance** — a module-level in-memory parameter store backs `aws-sdk-client-mock`
+  handlers so the conformance create→update→getValue→delete sequence stays consistent; no live AWS
+
+### Verification commands
+
+```sh
+pnpm install                                   # AWS SDK + smithy + clipboardy + dev deps
+pnpm --filter @paramhub/provider-aws-ssm test  # conformance (25) + unit (9) = 34, mocked AWS
+pnpm build                                      # all 3 packages build (app bundle stays ~43KB; SDK external)
+pnpm typecheck                                  # all packages pass
+pnpm test                                       # types (33) + provider (34) green
+
+# Manual, real SSM (needs AWS creds/permissions):
+PARAMHUB_PROVIDER=aws-ssm AWS_PROFILE=<p> AWS_REGION=<r> node packages/app/dist/cli.js
+```
 
 ---
 

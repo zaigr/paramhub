@@ -1,16 +1,18 @@
 /**
  * CLI entry point for paramhub.
  *
- * Initializes the mock provider (will be replaced by dynamic loading in Phase 4),
- * sets up the command registry, and renders the Ink application.
+ * Boots the mock provider by default; set PARAMHUB_PROVIDER=aws-ssm to use the
+ * real AWS SSM provider (Phase 4 will replace this with dynamic config loading).
+ * Sets up the command registry and renders the Ink application.
  *
  * Uses the alternate screen buffer for a fullscreen TUI experience.
  */
 
 import { render } from 'ink';
 import React from 'react';
-import type { Provider } from '@paramhub/types';
+import type { Provider, ProviderFactory } from '@paramhub/types';
 import { MockProviderFactory } from '@paramhub/types/mock';
+import { AwsSsmProviderFactory } from '@paramhub/provider-aws-ssm';
 import App from './app.js';
 
 /** Enter the alternate screen buffer (clean fullscreen, like vim/htop). */
@@ -25,17 +27,28 @@ function exitAltScreen() {
 }
 
 async function main() {
-  // Initialize providers (hardcoded mock for now — Phase 4 adds dynamic loading)
-  const mockProvider = MockProviderFactory.create();
-  await mockProvider.init({ defaultRegion: 'us-east-1', defaultProfile: 'default' });
+  // Select provider (Phase 4 adds dynamic config-based loading).
+  const useSsm = process.env.PARAMHUB_PROVIDER === 'aws-ssm';
+  const factory: ProviderFactory = useSsm
+    ? AwsSsmProviderFactory
+    : MockProviderFactory;
 
-  const connection = await mockProvider.testConnection();
+  const provider = factory.create();
+  await provider.init({
+    defaultRegion: process.env.AWS_REGION ?? 'us-east-1',
+    defaultProfile: process.env.AWS_PROFILE,
+  });
+
+  const connection = await provider.testConnection();
   if (!connection.ok) {
-    console.error('Failed to connect to mock provider:', connection.message);
+    console.error(
+      `Failed to connect to ${provider.displayName}:`,
+      connection.message,
+    );
     process.exit(1);
   }
 
-  const providers: Provider[] = [mockProvider];
+  const providers: Provider[] = [provider];
 
   // Enter fullscreen alternate buffer
   enterAltScreen();
