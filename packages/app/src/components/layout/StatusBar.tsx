@@ -30,7 +30,7 @@ function getHotkeyHints(): Array<{ label: string; hotkey: string }> {
 }
 
 export default function StatusBar() {
-  const { activeProviderId, providerContexts, error } = useAppState();
+  const { activeProviderId, providerContexts, error, statusMessage } = useAppState();
 
   const context: ProviderContext | undefined = activeProviderId
     ? providerContexts.get(activeProviderId)
@@ -71,6 +71,12 @@ export default function StatusBar() {
           <>
             <Text dimColor>│</Text>
             <Text color="red">{error}</Text>
+          </>
+        )}
+        {statusMessage && (
+          <>
+            <Text dimColor>│</Text>
+            <Text color="green">{statusMessage}</Text>
           </>
         )}
       </Box>

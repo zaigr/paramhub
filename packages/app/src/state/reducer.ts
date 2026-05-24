@@ -42,11 +42,15 @@ export interface AppState {
   // Detail
   selectedItem: Item | null;
   revealedValue: boolean;
+  detailValue: string | null;
+  detailValueLoading: boolean;
+  detailValueError: string | null;
 
   // UI
   modal: ModalState | null;
   focusZone: FocusZone;
   error: string | null;
+  statusMessage: string | null;
 }
 
 /** All possible state transitions. */
@@ -61,6 +65,10 @@ export type Action =
   | { type: 'SELECT_ITEM'; index: number }
   | { type: 'SET_SELECTED_ITEM'; item: Item | null }
   | { type: 'TOGGLE_REVEAL' }
+  | { type: 'LOAD_VALUE_START' }
+  | { type: 'LOAD_VALUE_SUCCESS'; value: string }
+  | { type: 'LOAD_VALUE_ERROR'; error: string }
+  | { type: 'SET_STATUS'; message: string | null }
   | { type: 'OPEN_MODAL'; modal: ModalState }
   | { type: 'CLOSE_MODAL' }
   | { type: 'SET_FOCUS'; zone: FocusZone }
@@ -83,9 +91,13 @@ export const initialState: AppState = {
   nextToken: undefined,
   selectedItem: null,
   revealedValue: false,
+  detailValue: null,
+  detailValueLoading: false,
+  detailValueError: null,
   modal: null,
   focusZone: 'list',
   error: null,
+  statusMessage: null,
 };
 
 /** Main application reducer. */
@@ -99,6 +111,10 @@ export function appReducer(state: AppState, action: Action): AppState {
         selectedIndex: 0,
         searchQuery: '',
         selectedItem: null,
+        revealedValue: false,
+        detailValue: null,
+        detailValueLoading: false,
+        detailValueError: null,
         view: 'list',
       };
 
@@ -136,10 +152,29 @@ export function appReducer(state: AppState, action: Action): AppState {
       };
 
     case 'SET_SELECTED_ITEM':
-      return { ...state, selectedItem: action.item, revealedValue: false };
+      return {
+        ...state,
+        selectedItem: action.item,
+        revealedValue: false,
+        detailValue: null,
+        detailValueLoading: false,
+        detailValueError: null,
+      };
 
     case 'TOGGLE_REVEAL':
       return { ...state, revealedValue: !state.revealedValue };
+
+    case 'LOAD_VALUE_START':
+      return { ...state, detailValueLoading: true, detailValueError: null };
+
+    case 'LOAD_VALUE_SUCCESS':
+      return { ...state, detailValue: action.value, detailValueLoading: false };
+
+    case 'LOAD_VALUE_ERROR':
+      return { ...state, detailValueLoading: false, detailValueError: action.error };
+
+    case 'SET_STATUS':
+      return { ...state, statusMessage: action.message };
 
     case 'OPEN_MODAL':
       return { ...state, modal: action.modal, focusZone: 'modal' };

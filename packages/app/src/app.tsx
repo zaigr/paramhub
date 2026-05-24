@@ -14,10 +14,12 @@ import { useCommandContext } from './hooks/use-command-context.js';
 import { useGlobalKeybindings } from './hooks/use-global-keybindings.js';
 import { useFocusManagement } from './hooks/use-focus-management.js';
 import { useSearch } from './hooks/use-search.js';
+import { useStatus } from './hooks/use-status.js';
 import MainLayout from './components/layout/MainLayout.js';
 import CommandPalette from './components/CommandPalette.js';
 import SearchInput from './components/search/SearchInput.js';
 import ItemList from './components/list/ItemList.js';
+import DetailPanel from './components/detail/DetailPanel.js';
 
 /** Content area — renders the current view based on app state. */
 function ContentArea() {
@@ -75,24 +77,8 @@ function ContentArea() {
     );
   }
 
-  if (state.view === 'detail' && state.selectedItem) {
-    return (
-      <Box flexDirection="column" paddingY={1}>
-        <Text bold color="cyan">
-          {state.selectedItem.path}
-        </Text>
-        <Box marginTop={1} flexDirection="column">
-          <Text>Type: {state.selectedItem.type}</Text>
-          <Text>Name: {state.selectedItem.name}</Text>
-          {state.selectedItem.metadata.version !== undefined && (
-            <Text>Version: {state.selectedItem.metadata.version}</Text>
-          )}
-        </Box>
-        <Box marginTop={1}>
-          <Text dimColor>r: reveal value · c: copy · y: copy path · Esc: back</Text>
-        </Box>
-      </Box>
-    );
+  if (state.view === 'detail') {
+    return <DetailPanel provider={activeProvider} />;
   }
 
   return (
@@ -109,9 +95,13 @@ function AppInner({ providers }: { providers: Provider[] }) {
   const { isGlobalKeybindingsActive } = useFocusManagement();
   const { exit } = useApp();
 
+  const { setStatus } = useStatus();
+
   // Register core commands on mount
   useEffect(() => {
-    const coreCommands = createCoreCommands({ dispatch, exit });
+    const getProvider = (id: string | null): Provider | null =>
+      id ? providers.find((p) => p.id === id) ?? null : null;
+    const coreCommands = createCoreCommands({ dispatch, exit, getProvider, setStatus });
     commandRegistry.registerAll(coreCommands);
 
     // Register provider commands
@@ -123,7 +113,7 @@ function AppInner({ providers }: { providers: Provider[] }) {
     return () => {
       commandRegistry.clear();
     };
-  }, [dispatch, exit, providers]);
+  }, [dispatch, exit, providers, setStatus]);
 
   // Initialize providers on mount
   useEffect(() => {

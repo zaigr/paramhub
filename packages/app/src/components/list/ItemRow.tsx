@@ -15,15 +15,16 @@ interface ItemRowProps {
 
 export default function ItemRow({ item, isSelected }: ItemRowProps) {
   return (
-    <Box>
-      <Text color={isSelected ? 'cyan' : undefined} bold={isSelected}>
-        {isSelected ? '> ' : '  '}
-      </Text>
-      <Text color={isSelected ? 'cyan' : undefined} dimColor={!isSelected}>
-        {item.path}
-      </Text>
+    <Box width="100%" justifyContent="space-between">
+      <Box>
+        <Text color={isSelected ? 'cyan' : undefined} bold={isSelected}>
+          {isSelected ? '> ' : '  '}
+        </Text>
+        <Text color={isSelected ? 'cyan' : undefined} dimColor={!isSelected}>
+          {item.path}
+        </Text>
+      </Box>
       <Text color={item.type === 'secure' ? 'yellow' : 'gray'} dimColor={!isSelected}>
-        {' '}
         [{item.type}]
       </Text>
     </Box>

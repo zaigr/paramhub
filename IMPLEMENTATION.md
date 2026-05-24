@@ -127,7 +127,7 @@ pnpm --filter @paramhub/types test  # Direct test execution
 
 ## Phase 2 — Core TUI Shell + Command Infrastructure
 
-**Status:** Phase 2a & 2b complete
+**Status:** Phase 2a, 2b, 2c & 2d complete ✅
 
 ---
 
@@ -297,9 +297,61 @@ User presses Escape
 
 ---
 
-### Phase 2d — Detail Panel
+### Phase 2d — Detail Panel ✅ COMPLETE
 
-**Status:** Not started
+**Status:** Done  
+**Deliverable verified:** Opening an item renders `DetailPanel` with provider-supplied fields (`provider.getItemDetails()`), lazily loads the value (`provider.getValue()` only on detail open, cached), masks `secure` values until toggled with `r`, and copies value/path to the clipboard via `core:copy-value` (`c`) / `core:copy-path` (`y`) with transient status feedback.
+
+#### What was implemented
+
+| Task | Status | Notes |
+|------|--------|-------|
+| `DetailPanel.tsx` | ✅ | Title + provider detail fields + value preview + footer/status hint; sensitive fields masked until revealed |
+| `ValuePreview.tsx` | ✅ | Loading / error / masked / revealed states; secure values masked by default |
+| Lazy value loading (`useItemValue`) | ✅ | Fetches `getValue()` on open, request-id staleness guard, module-level `TTLCache` reused by copy command |
+| `core:reveal-value` (`r`) | ✅ | Already dispatched `TOGGLE_REVEAL`; now drives masking in panel + preview |
+| `core:copy-value` (`c`) | ✅ | Resolves provider via `getProvider`, reads cached/fetched value, writes clipboard, sets status |
+| `core:copy-path` (`y`) | ✅ | Writes `selectedItem.path` to clipboard, sets status |
+| Transient status feedback | ✅ | `statusMessage` state + StatusBar display + 2s auto-clear effect |
+
+#### Files created
+
+```
+packages/app/src/
+├── hooks/
+│   └── use-item-value.ts           # Lazy value loader (cache + staleness guard)
+└── components/detail/
+    ├── DetailPanel.tsx              # Detail fields + value preview + footer
+    └── ValuePreview.tsx             # Masked/revealed value display
+```
+
+#### Files modified
+
+```
+packages/app/src/
+├── app.tsx                          # Render DetailPanel; pass getProvider to commands; status auto-clear
+├── commands/core-commands.ts        # copy-value/copy-path wired to clipboardy + getProvider
+├── state/reducer.ts                 # detailValue*, statusMessage state + LOAD_VALUE_*/SET_STATUS actions
+└── components/layout/StatusBar.tsx  # Show transient statusMessage
+packages/app/package.json            # Added clipboardy dependency
+```
+
+#### Key design decisions
+
+- **Lazy value loading mirrors `useSearch`** — request-id ref discards stale fetches; a module-level `TTLCache<string,string>` (key `providerId:itemId`) is shared with `core:copy-value` so copying doesn't refetch
+- **Copy commands resolve the provider via `getProvider`** — passed into `createCoreCommands`; commands only receive `CommandContext`, so the provider lookup is injected rather than added to the command contract
+- **Masking is type-driven** — `secure` items (and `sensitive` detail fields) are masked until `core:reveal-value` toggles `revealedValue`
+- **Transient status** — `statusMessage` shown in StatusBar (green), auto-cleared after 2s via an effect in `AppInner` (reducers stay timer-free)
+
+#### Verification commands
+
+```sh
+pnpm install        # Adds clipboardy
+pnpm typecheck      # All packages pass
+pnpm build          # All 3 packages build
+pnpm test           # 33 conformance tests still pass
+node packages/app/dist/cli.js  # Open an item → details, reveal (r), copy (c/y)
+```
 
 ---
 

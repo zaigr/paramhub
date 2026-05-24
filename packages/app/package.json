@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@paramhub/types": "workspace:*",
+    "clipboardy": "^4.0.0",
     "fuse.js": "^7.0.0",
     "ink": "^5.0.1",
     "ink-text-input": "^6.0.0",

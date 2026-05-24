@@ -9,13 +9,17 @@
  * The actual execution callbacks are bound when registering (see cli.ts).
  */
 
-import type { Command, CommandContext } from '@paramhub/types';
+import type { Command, CommandContext, Provider } from '@paramhub/types';
 import type { Action } from '../state/reducer.js';
 import type { Dispatch } from 'react';
+import { valueCache, valueCacheKey } from '../hooks/use-item-value.js';
+import { copyToClipboard } from '../utils/clipboard.js';
 
 export interface CoreCommandsOptions {
   dispatch: Dispatch<Action>;
   exit: () => void;
+  getProvider: (id: string | null) => Provider | null;
+  setStatus: (message: string) => void;
 }
 
 /**
@@ -23,7 +27,7 @@ export interface CoreCommandsOptions {
  * Commands are functions of state (via context) that dispatch actions.
  */
 export function createCoreCommands(options: CoreCommandsOptions): Command[] {
-  const { dispatch, exit } = options;
+  const { dispatch, exit, getProvider, setStatus } = options;
 
   return [
     // ── System ──
@@ -169,8 +173,21 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
       hotkey: 'c',
       isVisible: (ctx: CommandContext) => ctx.view === 'detail',
       isEnabled: (ctx: CommandContext) => ctx.selectedItem !== null,
-      execute: async (_ctx: CommandContext) => {
-        // Clipboard integration will be added in Phase 5
+      execute: async (ctx: CommandContext) => {
+        if (!ctx.selectedItem) return;
+        const provider = getProvider(ctx.activeProviderId);
+        if (!provider) return;
+        let value: string;
+        try {
+          const key = valueCacheKey(provider.id, ctx.selectedItem.id);
+          value = valueCache.get(key) ?? (await provider.getValue(ctx.selectedItem.id));
+          valueCache.set(key, value);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Failed to load value';
+          setStatus(`Copy failed: ${message}`);
+          return;
+        }
+        await copyToClipboard(value, 'value', setStatus);
       },
     },
     {
@@ -181,8 +198,9 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
       hotkey: 'y',
       isVisible: (ctx: CommandContext) => ctx.view === 'detail',
       isEnabled: (ctx: CommandContext) => ctx.selectedItem !== null,
-      execute: async (_ctx: CommandContext) => {
-        // Clipboard integration will be added in Phase 5
+      execute: async (ctx: CommandContext) => {
+        if (!ctx.selectedItem) return;
+        await copyToClipboard(ctx.selectedItem.path, 'path', setStatus);
       },
     },
   ];
