@@ -15,13 +15,17 @@
 
 import { Box, Text, useInput } from 'ink';
 import { useAppState, useAppDispatch } from '../../state/index.js';
+import { useItemActions } from '../../hooks/use-item-actions.js';
 
 export default function SearchInput() {
   const state = useAppState();
   const dispatch = useAppDispatch();
+  const { openItem } = useItemActions();
 
   const isFocused = state.focusZone === 'search';
   const query = state.searchQuery;
+  const items = state.items;
+  const isLoading = state.isLoading;
 
   const blurToList = () => dispatch({ type: 'SET_FOCUS', zone: 'list' });
   const clearQuery = () => dispatch({ type: 'CLEAR_SEARCH' });
@@ -61,9 +65,14 @@ export default function SearchInput() {
 
       if (key.ctrl || key.meta) return; // pass through to global handler
 
-      if (key.return || key.tab) return blurToList();
+      if (key.tab) return blurToList();
+      if (key.return) {
+        if (!isLoading && items.length === 1) return openItem(items[0]!);
+        return blurToList();
+      }
 
-      if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) return;
+      if (key.downArrow) return blurToList();
+      if (key.upArrow || key.leftArrow || key.rightArrow) return;
       if (key.pageUp || key.pageDown) return;
 
       if (input && input.length === 1) {

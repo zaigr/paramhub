@@ -37,7 +37,6 @@ const searchCache = new TTLCache<string, SearchResult>();
 export function useSearch({ provider, state, dispatch }: UseSearchOptions): UseSearchReturn {
   const { searchQuery, activeProviderId, isLoading } = state;
 
-  // Track the current request to detect stale responses
   const requestIdRef = useRef(0);
   const lastProviderRef = useRef<string | null>(null);
 
@@ -49,23 +48,9 @@ export function useSearch({ provider, state, dispatch }: UseSearchOptions): UseS
     }
   }, [activeProviderId]);
 
-  // Debounced search effect
-  useEffect(() => {
-    if (!provider || !searchQuery.trim()) {
-      // If query is empty, clear results
-      if (!searchQuery.trim() && state.items.length > 0) {
-        dispatch({ type: 'CLEAR_SEARCH' });
-      }
-      return;
-    }
-
-    const currentRequestId = ++requestIdRef.current;
-
-    const timer = setTimeout(() => {
-      // Check if this request is still current
-      if (currentRequestId !== requestIdRef.current) return;
-
-      const key = cacheKey(activeProviderId ?? '', searchQuery);
+  const runSearch = useCallback(
+    (query: string, nextToken: string | undefined, append: boolean, requestId: number) => {
+      const key = cacheKey(activeProviderId ?? '', query, nextToken);
       const cached = searchCache.get(key);
 
       if (cached) {
@@ -73,81 +58,56 @@ export function useSearch({ provider, state, dispatch }: UseSearchOptions): UseS
           type: 'SEARCH_SUCCESS',
           items: cached.items,
           nextToken: cached.nextToken,
-          append: false,
+          append,
         });
         return;
       }
 
-      dispatch({ type: 'SEARCH_START', query: searchQuery });
+      dispatch({ type: 'SEARCH_START', query });
 
-      provider
-        .search({ query: searchQuery, maxResults: 20 })
+      provider!
+        .search({ query, maxResults: 20, nextToken })
         .then((result) => {
-          // Ignore stale responses
-          if (currentRequestId !== requestIdRef.current) return;
+          if (requestId !== requestIdRef.current) return;
 
           searchCache.set(key, result);
           dispatch({
             type: 'SEARCH_SUCCESS',
             items: result.items,
             nextToken: result.nextToken,
-            append: false,
+            append,
           });
         })
         .catch((err: unknown) => {
-          if (currentRequestId !== requestIdRef.current) return;
+          if (requestId !== requestIdRef.current) return;
 
           const message = err instanceof Error ? err.message : 'Search failed';
           dispatch({ type: 'SEARCH_ERROR', error: message });
         });
+    },
+    [provider, activeProviderId, dispatch],
+  );
+
+  // Debounced search effect
+  useEffect(() => {
+    if (!provider) return;
+
+    const requestId = ++requestIdRef.current;
+    const timer = setTimeout(() => {
+      if (requestId !== requestIdRef.current) return;
+
+      runSearch(searchQuery, undefined, false, requestId);
     }, DEBOUNCE_MS);
 
-    return () => {
-      clearTimeout(timer);
-    };
+    return () => { clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, provider, activeProviderId]);
 
-  // Load next page (pagination)
   const loadNextPage = useCallback(() => {
     if (!provider || !state.nextToken || isLoading) return;
 
-    const currentRequestId = ++requestIdRef.current;
-    const key = cacheKey(activeProviderId ?? '', searchQuery, state.nextToken);
-    const cached = searchCache.get(key);
-
-    if (cached) {
-      dispatch({
-        type: 'SEARCH_SUCCESS',
-        items: cached.items,
-        nextToken: cached.nextToken,
-        append: true,
-      });
-      return;
-    }
-
-    dispatch({ type: 'SEARCH_START', query: searchQuery });
-
-    provider
-      .search({ query: searchQuery, maxResults: 20, nextToken: state.nextToken })
-      .then((result) => {
-        if (currentRequestId !== requestIdRef.current) return;
-
-        searchCache.set(key, result);
-        dispatch({
-          type: 'SEARCH_SUCCESS',
-          items: result.items,
-          nextToken: result.nextToken,
-          append: true,
-        });
-      })
-      .catch((err: unknown) => {
-        if (currentRequestId !== requestIdRef.current) return;
-
-        const message = err instanceof Error ? err.message : 'Pagination failed';
-        dispatch({ type: 'SEARCH_ERROR', error: message });
-      });
-  }, [provider, state.nextToken, isLoading, activeProviderId, searchQuery, dispatch]);
+    runSearch(searchQuery, state.nextToken, true, ++requestIdRef.current);
+  }, [provider, state.nextToken, isLoading, searchQuery, runSearch]);
 
   return { loadNextPage };
 }

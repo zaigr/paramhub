@@ -53,7 +53,7 @@ function normalizeKey(
 
   // Add modifiers
   if (key.ctrl) parts.push('ctrl');
-  if (key.meta) parts.push('meta');
+  if (key.meta && !key.escape) parts.push('meta');
   if (key.shift && !input) parts.push('shift'); // Only add shift for non-character keys
 
   // Determine the key name
