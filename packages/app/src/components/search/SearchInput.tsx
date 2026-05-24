@@ -7,9 +7,10 @@
  *
  * Keys:
  * - Characters: appended to search query
- * - Backspace: removes last character
- * - Escape: blurs back to list focus
- * - Ctrl+U: clears the query
+ * - Backspace: removes last character (blur if empty)
+ * - Alt+Backspace: deletes last word (blur if empty)
+ * - Ctrl+Backspace / Ctrl+U: clears query (blur if already empty)
+ * - Escape: blurs back to list (query preserved)
  */
 
 import { Box, Text, useInput } from 'ink';
@@ -22,52 +23,49 @@ export default function SearchInput() {
   const isFocused = state.focusZone === 'search';
   const query = state.searchQuery;
 
+  const blurToList = () => dispatch({ type: 'SET_FOCUS', zone: 'list' });
+  const clearQuery = () => dispatch({ type: 'CLEAR_SEARCH' });
+  const clearOrBlur = () => (query.length === 0 ? blurToList() : clearQuery());
+
+  const deleteChar = () =>
+    query.length > 0
+      ? dispatch({ type: 'SET_SEARCH_QUERY', query: query.slice(0, -1) })
+      : blurToList();
+
+  const deleteWord = () => {
+    const trimmed = query.trimEnd();
+    const lastSpace = trimmed.lastIndexOf(' ');
+    const next = lastSpace === -1 ? '' : trimmed.slice(0, lastSpace + 1);
+    if (next.length === 0) {
+      clearQuery();
+      if (query.length === 0) blurToList();
+    } else {
+      dispatch({ type: 'SET_SEARCH_QUERY', query: next });
+    }
+  };
+
+  const handleBackspace = (ctrl: boolean, meta: boolean) => {
+    if (meta) deleteWord();
+    else if (ctrl) clearOrBlur();
+    else deleteChar();
+  };
+
   useInput(
     (input, key) => {
-      // Escape: blur back to list
-      if (key.escape) {
-        dispatch({ type: 'SET_FOCUS', zone: 'list' });
-        return;
-      }
+      if (key.escape) return blurToList();
 
-      // Ctrl+U: clear the query
-      if (key.ctrl && input === 'u') {
-        dispatch({ type: 'CLEAR_SEARCH' });
-        dispatch({ type: 'SET_FOCUS', zone: 'list' });
-        return;
-      }
+      // Must come BEFORE ctrl/meta guard — some terminals send backspace as Ctrl+H (\x08)
+      if (key.backspace || key.delete) return handleBackspace(key.ctrl, key.meta);
 
-      // Ctrl+Q should still quit (let it pass through by not handling)
-      if (key.ctrl || key.meta) return;
+      if (key.ctrl && input === 'u') return clearOrBlur(); // readline compat
 
-      // Return: blur to list (keep query, just move focus to results)
-      if (key.return) {
-        dispatch({ type: 'SET_FOCUS', zone: 'list' });
-        return;
-      }
+      if (key.ctrl || key.meta) return; // pass through to global handler
 
-      // Tab: blur to list
-      if (key.tab) {
-        dispatch({ type: 'SET_FOCUS', zone: 'list' });
-        return;
-      }
+      if (key.return || key.tab) return blurToList();
 
-      // Backspace: remove last character
-      if (key.backspace) {
-        if (query.length > 0) {
-          dispatch({ type: 'SET_SEARCH_QUERY', query: query.slice(0, -1) });
-        } else {
-          // If query is already empty, blur back to list
-          dispatch({ type: 'SET_FOCUS', zone: 'list' });
-        }
-        return;
-      }
-
-      // Ignore arrow keys and other special keys
       if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) return;
-      if (key.delete || key.pageUp || key.pageDown) return;
+      if (key.pageUp || key.pageDown) return;
 
-      // Regular character input
       if (input && input.length === 1) {
         dispatch({ type: 'SET_SEARCH_QUERY', query: query + input });
       }
