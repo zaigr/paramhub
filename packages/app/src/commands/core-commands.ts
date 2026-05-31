@@ -14,11 +14,13 @@ import type { Action } from '../state/reducer.js';
 import type { Dispatch } from 'react';
 import { valueCache, valueCacheKey } from '../hooks/use-item-value.js';
 import { copyToClipboard } from '../utils/clipboard.js';
+import { commandRegistry } from './registry.js';
 
 export interface CoreCommandsOptions {
   dispatch: Dispatch<Action>;
   exit: () => void;
   getProvider: (id: string | null) => Provider | null;
+  getProviders: () => Provider[];
   setStatus: (message: string) => void;
 }
 
@@ -27,7 +29,7 @@ export interface CoreCommandsOptions {
  * Commands are functions of state (via context) that dispatch actions.
  */
 export function createCoreCommands(options: CoreCommandsOptions): Command[] {
-  const { dispatch, exit, getProvider, setStatus } = options;
+  const { dispatch, exit, getProvider, getProviders, setStatus } = options;
 
   return [
     // ── System ──
@@ -136,9 +138,8 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
       description: 'Switch to the next provider tab',
       category: 'view',
       hotkey: 'tab',
-      execute: () => {
-        // Actual provider tab switching is handled in the component
-        // that reads from the registry. This is a placeholder for the action.
+      execute: (ctx: CommandContext) => {
+        switchTab(ctx, 1, { dispatch, getProvider, getProviders });
       },
     },
     {
@@ -147,8 +148,8 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
       description: 'Switch to the previous provider tab',
       category: 'view',
       hotkey: 'shift+tab',
-      execute: () => {
-        // Actual provider tab switching is handled in the component
+      execute: (ctx: CommandContext) => {
+        switchTab(ctx, -1, { dispatch, getProvider, getProviders });
       },
     },
 
@@ -204,4 +205,38 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
       },
     },
   ];
+}
+
+interface SwitchTabDeps {
+  dispatch: Dispatch<Action>;
+  getProvider: (id: string | null) => Provider | null;
+  getProviders: () => Provider[];
+}
+
+function switchTab(ctx: CommandContext, direction: 1 | -1, deps: SwitchTabDeps): void {
+  const { dispatch, getProvider, getProviders } = deps;
+  const providers = getProviders();
+  if (providers.length <= 1) return;
+
+  const ids = providers.map((p) => p.id);
+  const cur = ids.indexOf(ctx.activeProviderId ?? '');
+  const nextIndex = (cur + direction + ids.length) % ids.length;
+  const nextId = ids[nextIndex];
+  if (!nextId || nextId === ctx.activeProviderId) return;
+
+  if (ctx.activeProviderId) {
+    commandRegistry.unregisterByPrefix(ctx.activeProviderId + ':');
+  }
+  const nextProvider = getProvider(nextId);
+  if (nextProvider) {
+    commandRegistry.registerAll(nextProvider.getCommands());
+  }
+
+  dispatch({ type: 'SET_PROVIDER', providerId: nextId });
+  getProvider(nextId)
+    ?.getCurrentContext()
+    .then((c) => {
+      dispatch({ type: 'SET_PROVIDER_CONTEXT', providerId: nextId, context: c });
+    })
+    .catch(() => {});
 }

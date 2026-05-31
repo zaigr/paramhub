@@ -5,11 +5,12 @@
  * and renders the main layout with global keybinding handling.
  */
 
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Box, Text, useApp } from 'ink';
 import type { Provider } from '@paramhub/types';
+import type { AppConfig } from './config/schema.js';
 import { AppStateProvider, useAppState, useAppDispatch } from './state/index.js';
-import { commandRegistry, createCoreCommands } from './commands/index.js';
+import { commandRegistry, createCoreCommands, applyKeybindingOverrides } from './commands/index.js';
 import { useCommandContext } from './hooks/use-command-context.js';
 import { useGlobalKeybindings } from './hooks/use-global-keybindings.js';
 import { useFocusManagement } from './hooks/use-focus-management.js';
@@ -81,6 +82,13 @@ function ContentArea() {
     return <DetailPanel provider={activeProvider} />;
   }
 
+  if (state.view === 'provider-tab' && state.activeCustomTabId) {
+    const customTab = activeProvider
+      ?.getCapabilities()
+      .customTabs.find((t) => t.id === state.activeCustomTabId);
+    if (customTab) return customTab.render() as React.ReactElement;
+  }
+
   return (
     <Box paddingY={1}>
       <Text dimColor>Select an item to view details</Text>
@@ -89,7 +97,7 @@ function ContentArea() {
 }
 
 /** Inner app component with access to state context. */
-function AppInner({ providers }: { providers: Provider[] }) {
+function AppInner({ providers, config }: { providers: Provider[]; config?: AppConfig }) {
   const dispatch = useAppDispatch();
   const context = useCommandContext();
   const { isGlobalKeybindingsActive } = useFocusManagement();
@@ -101,19 +109,24 @@ function AppInner({ providers }: { providers: Provider[] }) {
   useEffect(() => {
     const getProvider = (id: string | null): Provider | null =>
       id ? providers.find((p) => p.id === id) ?? null : null;
-    const coreCommands = createCoreCommands({ dispatch, exit, getProvider, setStatus });
+    const getProviders = (): Provider[] => providers;
+    const coreCommands = createCoreCommands({ dispatch, exit, getProvider, getProviders, setStatus });
     commandRegistry.registerAll(coreCommands);
 
-    // Register provider commands
-    for (const provider of providers) {
-      const providerCommands = provider.getCommands();
-      commandRegistry.registerAll(providerCommands);
+    // Apply keybinding overrides from config
+    if (config?.keybindings && Object.keys(config.keybindings).length > 0) {
+      applyKeybindingOverrides(config.keybindings);
+    }
+
+    // Register commands only for the initially active provider
+    if (providers.length > 0) {
+      commandRegistry.registerAll(providers[0]!.getCommands());
     }
 
     return () => {
       commandRegistry.clear();
     };
-  }, [dispatch, exit, providers, setStatus]);
+  }, [dispatch, exit, providers, setStatus, config]);
 
   // Initialize providers on mount
   useEffect(() => {
@@ -146,10 +159,10 @@ function AppInner({ providers }: { providers: Provider[] }) {
 }
 
 /** Root App component — wraps with state provider. */
-export default function App({ providers }: { providers: Provider[] }) {
+export default function App({ providers, config }: { providers: Provider[]; config?: AppConfig }) {
   return (
     <AppStateProvider>
-      <AppInner providers={providers} />
+      <AppInner providers={providers} config={config} />
     </AppStateProvider>
   );
 }

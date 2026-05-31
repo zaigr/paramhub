@@ -442,9 +442,76 @@ PARAMHUB_PROVIDER=aws-ssm AWS_PROFILE=<p> AWS_REGION=<r> node packages/app/dist/
 
 ---
 
-## Phase 4 — Provider Discovery & Dynamic Loading
+## Phase 4 — Provider Discovery & Dynamic Loading ✅ COMPLETE
 
-**Status:** Not started
+**Status:** Done  
+**Deliverable verified:** Config loaded from `~/.config/paramhub/config.yaml` (XDG-aware, generated on first run). `ProviderManager` dynamically imports provider packages listed in config, initialises them, and registers only the active provider's commands. Tab/Shift+Tab switching swaps provider commands in the registry. Falls back to mock provider if config has no providers or all fail. All 70 tests still pass, build clean.
+
+### What was implemented
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Config loader (YAML, XDG path, zod validation) | ✅ | `loadConfig()` — reads, validates, generates default on first run |
+| `ProviderManager` (dynamic `import()`, lifecycle) | ✅ | Loads enabled entries, factory discovery, non-fatal failures |
+| On provider load: register commands with prefix | ✅ | Boot registers first (active) provider only |
+| On provider unload/switch: unregister by prefix | ✅ | `unregisterByPrefix(providerId + ':')` on tab switch |
+| Provider tabs in top bar (dynamic) | ✅ | Already dynamic from state; hint shown only when >1 provider |
+| Tab switching wired (Tab/Shift+Tab) | ✅ | `core:next-tab` / `core:prev-tab` fully implemented |
+| Custom tabs rendered in TopBar | ✅ | Passive labels rendered; content via `view:'provider-tab'` in ContentArea |
+| First-run config generation | ✅ | `writeDefaultConfig()` writes commented YAML template to XDG path |
+| Mock provider fallback | ✅ | Used when no providers configured or all fail to load |
+
+### Files created
+
+```
+packages/app/src/
+├── config/
+│   ├── xdg.ts          # Cross-platform config dir (Windows/macOS/Linux)
+│   ├── schema.ts        # Zod schema — AppConfig, ProviderEntry types
+│   └── loader.ts        # loadConfig(), writeDefaultConfig(), getConfigFilePath()
+└── providers/
+    └── manager.ts       # ProviderManager class — loadAll(), dispose, getFailures()
+```
+
+### Files modified
+
+```
+packages/app/package.json                         # Added yaml ^2.4.0, zod ^3.23.0
+packages/app/src/cli.ts                           # Replaced hardcoded bootstrap with config+ProviderManager
+packages/app/src/app.tsx                          # config prop, selective command reg, custom tab view
+packages/app/src/commands/core-commands.ts        # getProviders option, tab switch logic, switchTab helper
+packages/app/src/components/layout/TopBar.tsx     # Custom tab labels, hint only when >1 provider
+```
+
+### Key design decisions
+
+- **Selective command registration** — only the active provider's commands are in the registry at any time. Tab switch calls `unregisterByPrefix` + `registerAll` atomically before dispatching `SET_PROVIDER`.
+- **Factory discovery** — checks `mod.default?.create` first, then scans named exports for first factory-shaped object. Handles `@paramhub/provider-aws-ssm`'s named `AwsSsmProviderFactory` export without requiring a default export.
+- **Mock fallback** — statically imported `MockProviderFactory` is always available; used when `ProviderManager.getAll()` returns empty (no config, all providers failed, etc.)
+- **Non-fatal provider failures** — each provider load is individually try/caught; failures are collected and printed to stderr before the alt screen opens.
+- **XDG cross-platform** — `xdg.ts` uses `APPDATA` on Windows, `XDG_CONFIG_HOME` or `~/.config` on macOS/Linux; only `node:os` + `node:path`.
+
+### Generated config location
+
+```
+macOS/Linux: ~/.config/paramhub/config.yaml
+Windows:     %APPDATA%\paramhub\config.yaml
+```
+
+### Verification commands
+
+```sh
+pnpm install        # adds yaml + zod
+pnpm build          # all 3 packages build
+pnpm typecheck      # all packages pass
+pnpm test           # 70 tests pass (types: 33, provider: 37)
+
+# First-run: generates config file, falls back to mock (no real AWS needed)
+node packages/app/dist/cli.js
+
+# With real AWS creds (reads ~/.config/paramhub/config.yaml):
+node packages/app/dist/cli.js
+```
 
 ---
 

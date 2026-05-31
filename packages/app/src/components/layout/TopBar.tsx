@@ -14,7 +14,10 @@ interface TopBarProps {
 }
 
 export default function TopBar({ providers }: TopBarProps) {
-  const { activeProviderId } = useAppState();
+  const { activeProviderId, activeCustomTabId, view } = useAppState();
+
+  const activeProvider = providers.find((p) => p.id === activeProviderId);
+  const customTabs = activeProvider?.getCapabilities().customTabs ?? [];
 
   return (
     <Box
@@ -43,9 +46,20 @@ export default function TopBar({ providers }: TopBarProps) {
             </Box>
           );
         })}
+        {customTabs.length > 0 && <Text dimColor>│</Text>}
+        {customTabs.map((tab) => {
+          const isActive = view === 'provider-tab' && activeCustomTabId === tab.id;
+          return (
+            <Box key={tab.id} marginRight={1}>
+              <Text color={isActive ? 'cyan' : undefined} bold={isActive} dimColor={!isActive}>
+                {tab.label}
+              </Text>
+            </Box>
+          );
+        })}
       </Box>
       <Box>
-        <Text dimColor>Tab/Shift+Tab: switch</Text>
+        <Text dimColor>{providers.length > 1 ? 'Tab/Shift+Tab: switch' : ''}</Text>
       </Box>
     </Box>
   );
