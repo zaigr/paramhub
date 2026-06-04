@@ -152,6 +152,33 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
         switchTab(ctx, -1, { dispatch, getProvider, getProviders });
       },
     },
+    {
+      id: 'core:switch-region',
+      label: 'Switch Region',
+      description: 'Switch the active provider to a different region',
+      category: 'view',
+      hotkey: 'ctrl+r',
+      isVisible: (ctx: CommandContext) => {
+        const p = getProvider(ctx.activeProviderId);
+        return !!p?.getCapabilities().canSwitchRegion && !!p.switchRegion;
+      },
+      execute: () => {
+        dispatch({ type: 'OPEN_MODAL', modal: { type: 'region-picker' } });
+      },
+    },
+    {
+      id: 'core:switch-profile',
+      label: 'Switch Profile',
+      description: 'Switch the active provider to a different profile',
+      category: 'view',
+      isVisible: (ctx: CommandContext) => {
+        const p = getProvider(ctx.activeProviderId);
+        return !!p?.getCapabilities().canSwitchAccount && !!p.switchProfile;
+      },
+      execute: () => {
+        dispatch({ type: 'OPEN_MODAL', modal: { type: 'profile-picker' } });
+      },
+    },
 
     // ── Item actions ──
     {

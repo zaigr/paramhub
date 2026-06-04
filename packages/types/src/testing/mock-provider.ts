@@ -244,7 +244,7 @@ export class MockProvider implements Provider {
       canCreate: true,
       canSearch: true,
       canSwitchRegion: true,
-      canSwitchAccount: false,
+      canSwitchAccount: true,
       supportedItemTypes: ['string', 'secure', 'binary', 'json', 'list'],
       customActions: [
         {

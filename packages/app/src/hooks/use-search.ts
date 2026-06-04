@@ -12,6 +12,7 @@ import type { Dispatch } from 'react';
 import type { Provider, SearchResult } from '@paramhub/types';
 import type { Action, AppState } from '../state/reducer.js';
 import { TTLCache } from '../utils/cache.js';
+import { conciseError } from '../utils/error.js';
 
 /** Debounce delay in milliseconds. */
 const DEBOUNCE_MS = 300;
@@ -23,7 +24,7 @@ function cacheKey(providerId: string, query: string, nextToken?: string): string
 
 interface UseSearchOptions {
   provider: Provider | null;
-  state: Pick<AppState, 'searchQuery' | 'nextToken' | 'items' | 'activeProviderId' | 'isLoading'>;
+  state: Pick<AppState, 'searchQuery' | 'nextToken' | 'items' | 'activeProviderId' | 'isLoading' | 'searchEpoch'>;
   dispatch: Dispatch<Action>;
 }
 
@@ -34,8 +35,19 @@ interface UseSearchReturn {
 // Module-level cache shared across re-renders (cleared on provider change)
 const searchCache = new TTLCache<string, SearchResult>();
 
+/**
+ * Clear the module-level search cache.
+ *
+ * Needed after a profile/region switch: the active provider id is unchanged,
+ * so the "clear cache on provider change" effect below will not fire, yet the
+ * cached results belong to the old profile/region.
+ */
+export function clearSearchCache(): void {
+  searchCache.clear();
+}
+
 export function useSearch({ provider, state, dispatch }: UseSearchOptions): UseSearchReturn {
-  const { searchQuery, activeProviderId, isLoading } = state;
+  const { searchQuery, activeProviderId, isLoading, searchEpoch } = state;
 
   const requestIdRef = useRef(0);
   const lastProviderRef = useRef<string | null>(null);
@@ -81,7 +93,7 @@ export function useSearch({ provider, state, dispatch }: UseSearchOptions): UseS
         .catch((err: unknown) => {
           if (requestId !== requestIdRef.current) return;
 
-          const message = err instanceof Error ? err.message : 'Search failed';
+          const message = conciseError(err instanceof Error ? err.message : 'Search failed');
           dispatch({ type: 'SEARCH_ERROR', error: message });
         });
     },
@@ -101,7 +113,7 @@ export function useSearch({ provider, state, dispatch }: UseSearchOptions): UseS
 
     return () => { clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, provider, activeProviderId]);
+  }, [searchQuery, provider, activeProviderId, searchEpoch]);
 
   const loadNextPage = useCallback(() => {
     if (!provider || !state.nextToken || isLoading) return;

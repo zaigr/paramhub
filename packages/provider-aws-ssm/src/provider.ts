@@ -31,7 +31,7 @@ import type {
   SearchResult,
 } from '@paramhub/types';
 
-import { createSsmClient, createStsClient } from './auth.js';
+import { createSsmClient, createStsClient, describeAwsError } from './auth.js';
 import {
   DEFAULT_REGION,
   getConfigSchema,
@@ -100,12 +100,28 @@ export class AwsSsmProvider implements Provider {
     this.account = undefined;
   }
 
+  /**
+   * Run an AWS call, rethrowing failures with a descriptive message.
+   *
+   * AWS errors often carry an empty `.message` (opaque `UnknownError`s,
+   * credential failures), which surfaces as a useless "Unknown error" in the
+   * UI. Normalize every fallible call through describeAwsError so callers and
+   * the status bar always see the real cause (error name + HTTP status).
+   */
+  private async run<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      throw new Error(describeAwsError(err), { cause: err });
+    }
+  }
+
   async testConnection(): Promise<ConnectionTestResult> {
     try {
       await this.ssm.send(new DescribeParametersCommand({ MaxResults: 1 }));
       return { ok: true, message: `Connected to AWS SSM (${this.region})` };
     } catch (err) {
-      return { ok: false, message: (err as Error).message };
+      return { ok: false, message: describeAwsError(err) };
     }
   }
 
@@ -193,14 +209,16 @@ export class AwsSsmProvider implements Provider {
     // enough matches or AWS runs out, otherwise a query whose matches sit on
     // later pages would yield an empty first page.
     do {
-      const res = await this.ssm.send(
-        new GetParametersByPathCommand({
-          Path: pathPrefix,
-          Recursive: true,
-          WithDecryption: false,
-          MaxResults: GET_BY_PATH_MAX,
-          NextToken: token,
-        }),
+      const res = await this.run(() =>
+        this.ssm.send(
+          new GetParametersByPathCommand({
+            Path: pathPrefix,
+            Recursive: true,
+            WithDecryption: false,
+            MaxResults: GET_BY_PATH_MAX,
+            NextToken: token,
+          }),
+        ),
       );
 
       for (const param of res.Parameters ?? []) {
@@ -228,12 +246,14 @@ export class AwsSsmProvider implements Provider {
       ? [{ Key: 'Name', Option: 'Contains', Values: [query] }]
       : undefined;
 
-    const res = await this.ssm.send(
-      new DescribeParametersCommand({
-        MaxResults: Math.min(maxResults ?? DESCRIBE_MAX, DESCRIBE_MAX),
-        NextToken: nextToken,
-        ParameterFilters: filters,
-      }),
+    const res = await this.run(() =>
+      this.ssm.send(
+        new DescribeParametersCommand({
+          MaxResults: Math.min(maxResults ?? DESCRIBE_MAX, DESCRIBE_MAX),
+          NextToken: nextToken,
+          ParameterFilters: filters,
+        }),
+      ),
     );
 
     const items = (res.Parameters ?? []).map((m) =>
@@ -243,10 +263,12 @@ export class AwsSsmProvider implements Provider {
   }
 
   async getItem(id: string): Promise<Item> {
-    const res = await this.ssm.send(
-      new DescribeParametersCommand({
-        ParameterFilters: [{ Key: 'Name', Option: 'Equals', Values: [id] }],
-      }),
+    const res = await this.run(() =>
+      this.ssm.send(
+        new DescribeParametersCommand({
+          ParameterFilters: [{ Key: 'Name', Option: 'Equals', Values: [id] }],
+        }),
+      ),
     );
     const meta = res.Parameters?.[0];
     if (!meta) {
@@ -278,8 +300,10 @@ export class AwsSsmProvider implements Provider {
   }
 
   async getValue(id: string): Promise<string> {
-    const res = await this.ssm.send(
-      new GetParameterCommand({ Name: id, WithDecryption: this.decrypt }),
+    const res = await this.run(() =>
+      this.ssm.send(
+        new GetParameterCommand({ Name: id, WithDecryption: this.decrypt }),
+      ),
     );
     const value = res.Parameter?.Value;
     if (value === undefined) {
@@ -293,19 +317,23 @@ export class AwsSsmProvider implements Provider {
   }
 
   async updateValue(id: string, newValue: string): Promise<void> {
-    await this.ssm.send(
-      new PutParameterCommand({ Name: id, Value: newValue, Overwrite: true }),
+    await this.run(() =>
+      this.ssm.send(
+        new PutParameterCommand({ Name: id, Value: newValue, Overwrite: true }),
+      ),
     );
   }
 
   async createItem(path: string, value: string, type: ItemType): Promise<Item> {
-    const res = await this.ssm.send(
-      new PutParameterCommand({
-        Name: path,
-        Value: value,
-        Type: itemTypeToSsmType(type),
-        Overwrite: false,
-      }),
+    const res = await this.run(() =>
+      this.ssm.send(
+        new PutParameterCommand({
+          Name: path,
+          Value: value,
+          Type: itemTypeToSsmType(type),
+          Overwrite: false,
+        }),
+      ),
     );
     const segments = path.split('/').filter(Boolean);
     return {
@@ -320,7 +348,7 @@ export class AwsSsmProvider implements Provider {
   }
 
   async deleteItem(id: string): Promise<void> {
-    await this.ssm.send(new DeleteParameterCommand({ Name: id }));
+    await this.run(() => this.ssm.send(new DeleteParameterCommand({ Name: id })));
   }
 }
 

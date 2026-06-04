@@ -32,7 +32,7 @@ providers:
 
 keybindings: {}
   # Override hotkeys by command ID, e.g.:
-  # switchRegion: "ctrl+r"
+  # core:switch-region: "ctrl+r"
 
 cache:
   enabled: true

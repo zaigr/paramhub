@@ -51,10 +51,13 @@ export default function ItemList({
   // Slice the visible window
   const visibleItems = items.slice(scrollOffset, scrollOffset + viewportHeight);
 
-  // Trigger pagination when selection reaches near the bottom of loaded items
+  // Trigger pagination when selection reaches near the bottom of loaded items.
+  // Guard on items.length > 0: for an empty list `selectedIndex >= -3` is
+  // always true, which would fire a (possibly stale) token with nothing loaded.
   if (
     hasNextPage &&
     !isLoading &&
+    items.length > 0 &&
     selectedIndex >= items.length - 3
   ) {
     onLoadNextPage();

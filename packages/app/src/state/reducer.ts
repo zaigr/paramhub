@@ -38,6 +38,8 @@ export interface AppState {
   selectedIndex: number;
   isLoading: boolean;
   nextToken?: string;
+  /** Bumped to force a list reload even when searchQuery is unchanged (e.g. after a profile/region switch). */
+  searchEpoch: number;
 
   // Detail
   selectedItem: Item | null;
@@ -89,6 +91,7 @@ export const initialState: AppState = {
   selectedIndex: 0,
   isLoading: false,
   nextToken: undefined,
+  searchEpoch: 0,
   selectedItem: null,
   revealedValue: false,
   detailValue: null,
@@ -110,6 +113,7 @@ export function appReducer(state: AppState, action: Action): AppState {
         items: [],
         selectedIndex: 0,
         searchQuery: '',
+        nextToken: undefined,
         selectedItem: null,
         revealedValue: false,
         detailValue: null,
@@ -143,7 +147,10 @@ export function appReducer(state: AppState, action: Action): AppState {
       };
 
     case 'SEARCH_ERROR':
-      return { ...state, isLoading: false, error: action.error };
+      // Drop the pagination token: ItemList auto-triggers loadNextPage during
+      // render while hasNextPage && !isLoading, so keeping a token after a
+      // failed page-load would re-fire the request every render forever.
+      return { ...state, isLoading: false, error: action.error, nextToken: undefined };
 
     case 'SELECT_ITEM':
       return {
@@ -193,7 +200,18 @@ export function appReducer(state: AppState, action: Action): AppState {
       return { ...state, searchQuery: action.query };
 
     case 'CLEAR_SEARCH':
-      return { ...state, searchQuery: '', items: [], selectedIndex: 0 };
+      // Clear nextToken too: a leftover token from the previous query/context
+      // is invalid here and would be fired blindly by ItemList's auto-paginate.
+      // Bump searchEpoch so the list reloads (default empty-query results) even
+      // when searchQuery was already '' — e.g. right after a profile/region switch.
+      return {
+        ...state,
+        searchQuery: '',
+        items: [],
+        selectedIndex: 0,
+        nextToken: undefined,
+        searchEpoch: state.searchEpoch + 1,
+      };
 
     case 'SET_ERROR':
       return { ...state, error: action.error };

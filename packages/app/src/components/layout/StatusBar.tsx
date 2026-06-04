@@ -70,13 +70,17 @@ export default function StatusBar() {
         {error && (
           <>
             <Text dimColor>│</Text>
-            <Text color="red">{error}</Text>
+            <Box flexShrink={1}>
+              <Text color="red" wrap="truncate-end">{error}</Text>
+            </Box>
           </>
         )}
         {statusMessage && (
           <>
             <Text dimColor>│</Text>
-            <Text color="green">{statusMessage}</Text>
+            <Box flexShrink={1}>
+              <Text color="green" wrap="truncate-end">{statusMessage}</Text>
+            </Box>
           </>
         )}
       </Box>

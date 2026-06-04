@@ -18,6 +18,7 @@ import { useSearch } from './hooks/use-search.js';
 import { useStatus } from './hooks/use-status.js';
 import MainLayout from './components/layout/MainLayout.js';
 import CommandPalette from './components/CommandPalette.js';
+import ListPicker from './components/modals/ListPicker.js';
 import SearchInput from './components/search/SearchInput.js';
 import ItemList from './components/list/ItemList.js';
 import DetailPanel from './components/detail/DetailPanel.js';
@@ -39,11 +40,19 @@ function ContentArea() {
     dispatch,
   });
 
-  // When the command palette is open, render it centered in the content area
+  // When a modal is open, render it centered in the content area
   if (state.modal?.type === 'command-palette') {
     return (
       <Box flexGrow={1} alignItems="center" justifyContent="center">
         <CommandPalette />
+      </Box>
+    );
+  }
+
+  if (state.modal?.type === 'region-picker' || state.modal?.type === 'profile-picker') {
+    return (
+      <Box flexGrow={1} alignItems="center" justifyContent="center">
+        <ListPicker kind={state.modal.type === 'region-picker' ? 'region' : 'profile'} />
       </Box>
     );
   }
