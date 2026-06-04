@@ -29,6 +29,7 @@ export const AppConfigSchema = z.object({
     .object({
       command: z.string().default(''),
       tempDir: z.string().default(''),
+      gui: z.boolean().optional(),
     })
     .default({}),
   bookmarks: z.array(BookmarkSchema).default([]),

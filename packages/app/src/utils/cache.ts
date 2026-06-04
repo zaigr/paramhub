@@ -39,6 +39,11 @@ export class TTLCache<K, V> {
     return this.get(key) !== undefined;
   }
 
+  /** Remove a single entry (e.g. after the underlying value is mutated). */
+  delete(key: K): void {
+    this.store.delete(key);
+  }
+
   clear(): void {
     this.store.clear();
   }

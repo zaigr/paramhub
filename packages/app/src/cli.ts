@@ -4,16 +4,8 @@ import type { Provider } from '@paramhub/types';
 import { MockProviderFactory } from '@paramhub/types/mock';
 import { loadConfig } from './config/loader.js';
 import { ProviderManager } from './providers/manager.js';
+import { enterAltScreen, exitAltScreen } from './utils/terminal.js';
 import App from './app.js';
-
-function enterAltScreen() {
-  process.stdout.write('\x1b[?1049h');
-  process.stdout.write('\x1b[H');
-}
-
-function exitAltScreen() {
-  process.stdout.write('\x1b[?1049l');
-}
 
 async function main() {
   const config = await loadConfig();

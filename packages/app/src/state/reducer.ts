@@ -8,11 +8,39 @@
 import type { Item, ProviderContext, Provider } from '@paramhub/types';
 
 /** The type of modal currently displayed. */
-export type ModalType = 'command-palette' | 'confirm' | 'region-picker' | 'profile-picker';
+export type ModalType =
+  | 'command-palette'
+  | 'confirm'
+  | 'create-item'
+  | 'region-picker'
+  | 'profile-picker';
 
 export interface ModalState {
   type: ModalType;
   data?: unknown;
+}
+
+/** A single rendered diff/preview line for the confirm modal. */
+export interface DiffLine {
+  text: string;
+  /** Ink color name (e.g. 'green' for additions, 'red' for removals). */
+  color?: string;
+}
+
+/**
+ * Payload for the generic confirm modal (modal.data when type === 'confirm').
+ * Used by edit (with a diff) and delete (with a body) flows.
+ */
+export interface ConfirmModalData {
+  title: string;
+  /** Optional one-line body (e.g. the path being deleted). */
+  body?: string;
+  /** Optional preview/diff lines. */
+  lines?: DiffLine[];
+  /** Label for the confirm action shown in the hint (default "Confirm"). */
+  confirmLabel?: string;
+  /** Invoked when the user confirms; errors are surfaced by the callback. */
+  onConfirm: () => void | Promise<void>;
 }
 
 /** View modes for the main content area. */
@@ -53,6 +81,8 @@ export interface AppState {
   focusZone: FocusZone;
   error: string | null;
   statusMessage: string | null;
+  /** True while an external GUI editor is open; drives the waiting overlay. */
+  editingExternally: boolean;
 }
 
 /** All possible state transitions. */
@@ -71,6 +101,7 @@ export type Action =
   | { type: 'LOAD_VALUE_SUCCESS'; value: string }
   | { type: 'LOAD_VALUE_ERROR'; error: string }
   | { type: 'SET_STATUS'; message: string | null }
+  | { type: 'SET_EDITING'; value: boolean }
   | { type: 'OPEN_MODAL'; modal: ModalState }
   | { type: 'CLOSE_MODAL' }
   | { type: 'SET_FOCUS'; zone: FocusZone }
@@ -78,7 +109,8 @@ export type Action =
   | { type: 'CLEAR_SEARCH' }
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'NAVIGATE_UP' }
-  | { type: 'NAVIGATE_DOWN' };
+  | { type: 'NAVIGATE_DOWN' }
+  | { type: 'REFRESH_LIST' };
 
 /** Initial application state. */
 export const initialState: AppState = {
@@ -101,6 +133,7 @@ export const initialState: AppState = {
   focusZone: 'list',
   error: null,
   statusMessage: null,
+  editingExternally: false,
 };
 
 /** Main application reducer. */
@@ -183,6 +216,9 @@ export function appReducer(state: AppState, action: Action): AppState {
     case 'SET_STATUS':
       return { ...state, statusMessage: action.message };
 
+    case 'SET_EDITING':
+      return { ...state, editingExternally: action.value };
+
     case 'OPEN_MODAL':
       return { ...state, modal: action.modal, focusZone: 'modal' };
 
@@ -227,6 +263,13 @@ export function appReducer(state: AppState, action: Action): AppState {
         ...state,
         selectedIndex: Math.min(state.items.length - 1, state.selectedIndex + 1),
       };
+
+    case 'REFRESH_LIST':
+      // Force useSearch to re-run for the current query even though it is
+      // unchanged (after a mutation). Callers clear the module-level search
+      // cache first, so the reload hits the provider. nextToken is dropped so
+      // ItemList's auto-paginate cannot fire a stale token mid-refresh.
+      return { ...state, searchEpoch: state.searchEpoch + 1, nextToken: undefined };
 
     default:
       return state;

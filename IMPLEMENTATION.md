@@ -515,9 +515,100 @@ node packages/app/dist/cli.js
 
 ---
 
-## Phase 5 — Editor Integration & Mutations
+## Phase 5 — Editor Integration & Mutations ✅ COMPLETE
 
-**Status:** Not started
+**Status:** Done
+**Deliverable verified:** The write loop is closed. `core:edit-value` (`e`) fetches the value,
+suspends Ink, hands the terminal to the external editor, shows a colored diff, and saves on confirm.
+`core:create-item` (`n`) runs a path→type→editor→confirm flow. `core:delete-item` (`d`) confirms then
+deletes. All three are commands, so they also appear in the `Ctrl+P` palette. The editor module is
+cross-platform (no hardcoded `/tmp`, no shell, `notepad`/`vi` fallback) and cleans up temp files even
+on crash. Typecheck + build clean; all 70 existing tests still pass.
+
+### What was implemented
+
+| Task | Status | Notes |
+|------|--------|-------|
+| External editor module | ✅ | `$VISUAL` → `$EDITOR` → `vi`/`notepad` fallback; command strings with args split (e.g. `code --wait`) |
+| Temp file handling | ✅ | `os.tmpdir()` + `crypto` random name, `0o600` mode; honors `config.editor.command`/`tempDir` |
+| Ink suspend/resume | ✅ | `useEditor` hook: `setRawMode(false)` + `stdin.pause()` + leave alt screen → `spawnSync` → re-enter + resume, in try/finally |
+| Diff display | ✅ | `diff` package `diffLines` → colored `+`/`-` lines in the confirm modal |
+| `core:edit-value` (`e`) | ✅ | Full flow: cached `getValue` → editor → "No changes" short-circuit → diff confirm → `updateValue` → cache update + list refresh |
+| `core:create-item` (`n`) | ✅ | `CreateItemModal`: path input → type pick (from `supportedItemTypes`) → editor → confirm → `createItem` |
+| `core:delete-item` (`d`) | ✅ | Confirm dialog → `deleteItem` → cache invalidate → back to list + refresh |
+| Secure temp cleanup | ✅ | Module-level live-file set + single `process.on('exit')` unlink handler (covers SIGINT/SIGTERM via cli.ts `process.exit`); plus `finally` rm per edit |
+| Cross-platform | ✅ | `process.platform` fallback, `spawnSync` without `shell`, `os.tmpdir()`, mode no-op on Windows |
+
+### Files created
+
+```
+packages/app/src/
+├── editor/
+│   └── external.ts                 # resolveEditor, editValueInEditor, temp-file + crash cleanup
+├── hooks/
+│   └── use-editor.ts               # Ink suspend/resume wrapper + EditorContext/EditorProvider
+├── utils/
+│   └── terminal.ts                 # shared alt-screen escape sequences + helpers
+└── components/modals/
+    ├── ConfirmDialog.tsx           # generic y/n confirm; renders body + diff lines
+    └── CreateItemModal.tsx         # path → type → editor → confirm form
+```
+
+### Files modified
+
+```
+packages/app/src/
+├── app.tsx                         # useEditor wiring, runEditor into commands, EditorProvider, confirm/create modal cases
+├── cli.ts                          # use shared terminal util (removed local alt-screen fns)
+├── commands/core-commands.ts       # runEditor option + edit/create/delete commands + buildDiffLines
+├── state/reducer.ts                # 'create-item' ModalType, DiffLine/ConfirmModalData, REFRESH_LIST action
+├── state/index.ts                  # export DiffLine, ConfirmModalData
+└── utils/cache.ts                  # TTLCache.delete(key) for single-entry invalidation
+packages/app/package.json           # added diff + @types/diff
+```
+
+### Key design decisions
+
+- **`spawnSync` (blocking), no shell** — the simplest correct model for a modal editor handoff and
+  avoids POSIX-shell vs `cmd.exe` quoting/injection differences. Node's event loop is blocked during
+  the edit, so React cannot re-render mid-edit; every `runEditor` caller dispatches afterwards, which
+  triggers Ink's repaint on the re-entered alt screen.
+- **Trailing-newline normalization** — editors (notably `vi`) append a trailing newline. A single
+  trailing `\n`/`\r\n` is stripped from the edited result so saving an unchanged value isn't reported
+  as a change.
+- **Editor via context** — `useEditor` is created once in `AppInner` (config-aware) and exposed two
+  ways: `runEditor` is injected into `createCoreCommands` for `edit-value`, and `EditorProvider`
+  exposes the same instance to `CreateItemModal` (which drives its own editor step), so config editor
+  settings apply uniformly. Commands still receive only `CommandContext`; the editor + provider are
+  closed over at registration (same injection pattern as the copy commands).
+- **Generic confirm modal** — edit (with a diff) and delete (with a path body) share one
+  `ConfirmDialog`, carrying `{ title, body?, lines?, confirmLabel?, onConfirm }` in `modal.data`. The
+  `onConfirm` callback owns the mutation + cache busting + status, mirroring `ListPicker`'s
+  close-then-act pattern.
+- **List refresh after mutation** — `REFRESH_LIST` bumps `searchEpoch` (which `useSearch` already
+  watches) and drops `nextToken`; callers first `clearSearchCache()` so the reload hits the provider
+  rather than stale cache (same invariant as profile/region switching).
+- **Crash-safe temp cleanup** — live temp paths tracked in a module set; one `process.on('exit')`
+  handler unlinks leftovers. cli.ts's SIGINT/SIGTERM handlers call `process.exit`, which fires
+  `exit`, so signal-triggered exits are covered without duplicating logic.
+
+### Verification commands
+
+```sh
+pnpm install        # adds diff + @types/diff
+pnpm typecheck      # all packages pass
+pnpm build          # all 3 packages build (app bundle ~73KB)
+pnpm test           # 70 tests pass (types: 33, provider: 37)
+
+# Editor module verified in isolation (esbuild transpile + fake non-interactive editor):
+#   - resolveEditor: args splitting, config override, vi/notepad fallback
+#   - editValueInEditor: change detection, trailing-newline strip, 0 leftover temp files
+
+# Manual, mock provider (no AWS):
+node packages/app/dist/cli.js
+#   detail view → e (edit) / d (delete);  list/detail → n (create)
+#   EDITOR=vi or EDITOR="code --wait" to exercise fallbacks
+```
 
 ---
 

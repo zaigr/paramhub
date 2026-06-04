@@ -47,6 +47,9 @@ importers:
       clipboardy:
         specifier: ^4.0.0
         version: 4.0.0
+      diff:
+        specifier: ^5.2.0
+        version: 5.2.2
       fuse.js:
         specifier: ^7.0.0
         version: 7.3.0
@@ -66,6 +69,9 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
     devDependencies:
+      '@types/diff':
+        specifier: ^5.2.0
+        version: 5.2.3
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.41
@@ -690,6 +696,9 @@ packages:
 
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
+
+  '@types/diff@5.2.3':
+    resolution: {integrity: sha512-K0Oqlrq3kQMaO2RhfrNQX5trmt+XLyom88zS0u84nnIcLvFnRUMRRHmrGny5GSM+kNO9IZLARsdQHDzkhAgmrQ==}
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
@@ -2421,6 +2430,8 @@ snapshots:
       assertion-error: 2.0.1
 
   '@types/deep-eql@4.0.2': {}
+
+  '@types/diff@5.2.3': {}
 
   '@types/estree@1.0.8': {}
 

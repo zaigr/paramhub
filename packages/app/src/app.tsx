@@ -16,9 +16,13 @@ import { useGlobalKeybindings } from './hooks/use-global-keybindings.js';
 import { useFocusManagement } from './hooks/use-focus-management.js';
 import { useSearch } from './hooks/use-search.js';
 import { useStatus } from './hooks/use-status.js';
+import { useEditor, EditorProvider } from './hooks/use-editor.js';
 import MainLayout from './components/layout/MainLayout.js';
 import CommandPalette from './components/CommandPalette.js';
 import ListPicker from './components/modals/ListPicker.js';
+import ConfirmDialog from './components/modals/ConfirmDialog.js';
+import CreateItemModal from './components/modals/CreateItemModal.js';
+import Modal from './components/modals/Modal.js';
 import SearchInput from './components/search/SearchInput.js';
 import ItemList from './components/list/ItemList.js';
 import DetailPanel from './components/detail/DetailPanel.js';
@@ -40,6 +44,18 @@ function ContentArea() {
     dispatch,
   });
 
+  // An external GUI editor is open: keep the TUI on screen but show a waiting
+  // overlay on top of whatever was there (list, detail, or a modal).
+  if (state.editingExternally) {
+    return (
+      <Box flexGrow={1} alignItems="center" justifyContent="center">
+        <Modal title="Waiting for editor…">
+          <Text dimColor>Save &amp; close the file in your editor to continue.</Text>
+        </Modal>
+      </Box>
+    );
+  }
+
   // When a modal is open, render it centered in the content area
   if (state.modal?.type === 'command-palette') {
     return (
@@ -53,6 +69,22 @@ function ContentArea() {
     return (
       <Box flexGrow={1} alignItems="center" justifyContent="center">
         <ListPicker kind={state.modal.type === 'region-picker' ? 'region' : 'profile'} />
+      </Box>
+    );
+  }
+
+  if (state.modal?.type === 'confirm') {
+    return (
+      <Box flexGrow={1} alignItems="center" justifyContent="center">
+        <ConfirmDialog />
+      </Box>
+    );
+  }
+
+  if (state.modal?.type === 'create-item') {
+    return (
+      <Box flexGrow={1} alignItems="center" justifyContent="center">
+        <CreateItemModal />
       </Box>
     );
   }
@@ -113,13 +145,25 @@ function AppInner({ providers, config }: { providers: Provider[]; config?: AppCo
   const { exit } = useApp();
 
   const { setStatus } = useStatus();
+  const editor = useEditor({
+    editorCommand: config?.editor?.command,
+    tempDir: config?.editor?.tempDir,
+    gui: config?.editor?.gui,
+  });
 
   // Register core commands on mount
   useEffect(() => {
     const getProvider = (id: string | null): Provider | null =>
       id ? providers.find((p) => p.id === id) ?? null : null;
     const getProviders = (): Provider[] => providers;
-    const coreCommands = createCoreCommands({ dispatch, exit, getProvider, getProviders, setStatus });
+    const coreCommands = createCoreCommands({
+      dispatch,
+      exit,
+      getProvider,
+      getProviders,
+      setStatus,
+      runEditor: editor.runEditor,
+    });
     commandRegistry.registerAll(coreCommands);
 
     // Apply keybinding overrides from config
@@ -135,7 +179,7 @@ function AppInner({ providers, config }: { providers: Provider[]; config?: AppCo
     return () => {
       commandRegistry.clear();
     };
-  }, [dispatch, exit, providers, setStatus, config]);
+  }, [dispatch, exit, providers, setStatus, config, editor.runEditor]);
 
   // Initialize providers on mount
   useEffect(() => {
@@ -161,9 +205,11 @@ function AppInner({ providers, config }: { providers: Provider[]; config?: AppCo
   useGlobalKeybindings(context, { isActive: isGlobalKeybindingsActive });
 
   return (
-    <MainLayout providers={providers}>
-      <ContentArea />
-    </MainLayout>
+    <EditorProvider value={editor}>
+      <MainLayout providers={providers}>
+        <ContentArea />
+      </MainLayout>
+    </EditorProvider>
   );
 }
 
