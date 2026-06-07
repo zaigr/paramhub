@@ -6,13 +6,21 @@
  * fields are masked until revealed with core:reveal-value (r).
  */
 
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import type { Provider } from '@paramhub/types';
 import { useAppState, useAppDispatch } from '../../state/index.js';
 import { useItemValue } from '../../hooks/use-item-value.js';
 import ValuePreview from './ValuePreview.js';
 
 const MASK = '••••••••';
+
+/**
+ * Rows reserved by everything around the value viewport, mirroring the approach
+ * in ItemList. Accounts for: TopBar (3), StatusBar (1), detail border (2),
+ * path line (1), Value header (1), footer hint (1), inter-section margins (~4),
+ * and a safety buffer. The variable field count is subtracted separately.
+ */
+const CHROME_ROWS = 13;
 
 interface DetailPanelProps {
   provider: Provider | null;
@@ -21,6 +29,7 @@ interface DetailPanelProps {
 export default function DetailPanel({ provider }: DetailPanelProps) {
   const { selectedItem, revealedValue, statusMessage } = useAppState();
   const dispatch = useAppDispatch();
+  const { stdout } = useStdout();
 
   useItemValue({ provider, item: selectedItem, dispatch });
 
@@ -34,6 +43,19 @@ export default function DetailPanel({ provider }: DetailPanelProps) {
 
   const fields = provider ? provider.getItemDetails(selectedItem) : [];
   const labelWidth = fields.reduce((max, f) => Math.max(max, f.label.length), 0) + 1;
+
+  const isSecure = selectedItem.type === 'secure';
+  const terminalRows = stdout?.rows ?? 24;
+  const valueMaxHeight = Math.max(3, terminalRows - CHROME_ROWS - fields.length);
+
+  const hint = [
+    isSecure ? 'r: reveal value' : null,
+    'c: copy value',
+    'y: copy path',
+    'Esc: back',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <Box
@@ -59,14 +81,14 @@ export default function DetailPanel({ provider }: DetailPanelProps) {
       </Box>
 
       <Box marginTop={1}>
-        <ValuePreview />
+        <ValuePreview maxHeight={valueMaxHeight} />
       </Box>
 
       <Box marginTop={1}>
         {statusMessage ? (
           <Text color="green">{statusMessage}</Text>
         ) : (
-          <Text dimColor>r: reveal value · c: copy value · y: copy path · Esc: back</Text>
+          <Text dimColor>{hint}</Text>
         )}
       </Box>
     </Box>
