@@ -56,42 +56,59 @@ function ContentArea() {
     );
   }
 
-  // When a modal is open, render it centered in the content area
-  if (state.modal?.type === 'command-palette') {
-    return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <CommandPalette />
-      </Box>
-    );
+  const base = <BaseView activeProvider={activeProvider} onLoadNextPage={loadNextPage} />;
+
+  const modal = state.modal;
+  let overlay: React.ReactNode = null;
+  if (modal?.type === 'command-palette') {
+    overlay = <CommandPalette />;
+  } else if (modal?.type === 'region-picker' || modal?.type === 'profile-picker') {
+    overlay = <ListPicker kind={modal.type === 'region-picker' ? 'region' : 'profile'} />;
+  } else if (modal?.type === 'confirm') {
+    overlay = <ConfirmDialog />;
+  } else if (modal?.type === 'create-item') {
+    overlay = <CreateItemModal />;
   }
 
-  if (state.modal?.type === 'region-picker' || state.modal?.type === 'profile-picker') {
-    return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <ListPicker kind={state.modal.type === 'region-picker' ? 'region' : 'profile'} />
-      </Box>
-    );
+  if (overlay) {
+    return <FloatingLayer base={base}>{overlay}</FloatingLayer>;
   }
 
-  if (state.modal?.type === 'confirm') {
-    return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <ConfirmDialog />
-      </Box>
-    );
-  }
+  return base;
+}
 
-  if (state.modal?.type === 'create-item') {
-    return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <CreateItemModal />
+// The overlay is absolute so it composites over the base (later in tree order)
+// without disturbing its layout; centering lives on the absolute box alone so
+// the in-flow base view keeps its natural size.
+function FloatingLayer({ base, children }: { base: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <Box flexDirection="column" flexGrow={1}>
+      {base}
+      <Box
+        position="absolute"
+        width="100%"
+        height="100%"
+        alignItems="center"
+        justifyContent="center"
+      >
+        {children}
       </Box>
-    );
-  }
+    </Box>
+  );
+}
+
+function BaseView({
+  activeProvider,
+  onLoadNextPage,
+}: {
+  activeProvider: Provider | null;
+  onLoadNextPage: () => void;
+}) {
+  const state = useAppState();
 
   if (state.view === 'list') {
     return (
-      <Box flexDirection="column" flexGrow={1}>
+      <Box flexDirection="column" flexGrow={1} paddingX={1}>
         <SearchInput />
         {state.items.length === 0 && !state.isLoading && !state.searchQuery && (
           <Box paddingY={1}>
@@ -113,7 +130,7 @@ function ContentArea() {
           selectedIndex={state.selectedIndex}
           isLoading={state.isLoading}
           hasNextPage={!!state.nextToken}
-          onLoadNextPage={loadNextPage}
+          onLoadNextPage={onLoadNextPage}
         />
       </Box>
     );

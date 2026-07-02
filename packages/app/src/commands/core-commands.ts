@@ -213,7 +213,8 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
       description: 'Toggle visibility of the selected parameter value',
       category: 'item',
       hotkey: 'r',
-      isVisible: (ctx: CommandContext) => ctx.view === 'detail',
+      isVisible: (ctx: CommandContext) =>
+        ctx.view === 'detail' && ctx.selectedItem?.type === 'secure',
       isEnabled: (ctx: CommandContext) => ctx.selectedItem !== null,
       execute: () => {
         dispatch({ type: 'TOGGLE_REVEAL' });

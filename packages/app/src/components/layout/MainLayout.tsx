@@ -23,7 +23,7 @@ export default function MainLayout({ providers, children }: MainLayoutProps) {
   return (
     <Box flexDirection="column" width="100%" height={terminalHeight}>
       <TopBar providers={providers} />
-      <Box flexDirection="column" flexGrow={1} paddingX={1}>
+      <Box flexDirection="column" flexGrow={1}>
         {children}
       </Box>
       <StatusBar />
