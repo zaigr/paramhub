@@ -42,7 +42,7 @@ export default function DetailPanel({ provider }: DetailPanelProps) {
   }
 
   const fields = provider ? provider.getItemDetails(selectedItem) : [];
-  const labelWidth = fields.reduce((max, f) => Math.max(max, f.label.length), 0) + 1;
+  const labelWidth = fields.reduce((max, f) => Math.max(max, f.label.length), 0) + 2;
 
   const isSecure = selectedItem.type === 'secure';
   const terminalRows = stdout?.rows ?? 24;

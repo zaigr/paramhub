@@ -108,7 +108,7 @@ function BaseView({
 
   if (state.view === 'list') {
     return (
-      <Box flexDirection="column" flexGrow={1}>
+      <Box flexDirection="column" flexGrow={1} paddingX={1}>
         <SearchInput />
         {state.items.length === 0 && !state.isLoading && !state.searchQuery && (
           <Box paddingY={1}>
