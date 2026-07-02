@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import { useAppState } from '../../state/index.js';
+import { useFocusManagement } from '../../hooks/use-focus-management.js';
 
 const MASK = '••••••••';
 
@@ -54,6 +55,7 @@ export default function ValuePreview({ maxHeight }: ValuePreviewProps) {
   const { selectedItem, revealedValue, detailValue, detailValueLoading, detailValueError } =
     useAppState();
   const { stdout } = useStdout();
+  const { isModalOpen } = useFocusManagement();
   const [scrollOffset, setScrollOffset] = useState(0);
 
   // Reset scroll when the displayed value changes (new item or reloaded value).
@@ -72,7 +74,8 @@ export default function ValuePreview({ maxHeight }: ValuePreviewProps) {
   const offset = Math.min(scrollOffset, maxOffset);
   const overflow = lines.length > viewportHeight;
 
-  // Local scroll handling — only active when there is something to scroll.
+  // Gated on !isModalOpen: the detail view stays mounted behind a floating modal,
+  // so without this its scroll keys would fire alongside the modal's navigation.
   useInput(
     (_input, key) => {
       const page = viewportHeight;
@@ -81,7 +84,7 @@ export default function ValuePreview({ maxHeight }: ValuePreviewProps) {
       else if (key.pageUp) setScrollOffset((o) => clamp(o - page, 0, maxOffset));
       else if (key.pageDown) setScrollOffset((o) => clamp(o + page, 0, maxOffset));
     },
-    { isActive: showValue && overflow },
+    { isActive: showValue && overflow && !isModalOpen },
   );
 
   if (!selectedItem) return null;
