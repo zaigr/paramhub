@@ -56,8 +56,8 @@ function normalizeKey(
   if (key.meta && !key.escape) parts.push('meta');
   if (key.shift && !input) parts.push('shift'); // Only add shift for non-character keys
 
-  // Determine the key name
-  if (key.return) parts.push('return');
+  // Determine the key name. '\n' is Enter delivered as LF (see utils/keys.ts).
+  if (key.return || input === '\n') parts.push('return');
   else if (key.escape) parts.push('escape');
   else if (key.tab) parts.push('tab');
   else if (key.backspace) parts.push('backspace');
