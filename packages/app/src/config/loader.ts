@@ -9,62 +9,41 @@ export function getConfigFilePath(): string {
   return path.join(getConfigDir(), 'config.yaml');
 }
 
-const DEFAULT_CONFIG_TEMPLATE = `# paramhub configuration
-# Generated on first run. Edit to customize.
-# Full docs: https://github.com/paramhub/paramhub
-
-theme: "dark"
-defaultProvider: "aws-ssm"
-
-providers:
-  - package: "@paramhub/provider-aws-ssm"
-    enabled: true
-    config:
-      defaultRegion: "us-east-1"
-      defaultProfile: "default"
-      decryptSecureStrings: true
-
-  # Built-in mock provider — flip enabled to true to get a second tab
-  # for testing Tab/Shift+Tab provider switching without real cloud access.
-  - package: "@paramhub/types/mock"
-    enabled: false
-    config: {}
-
-keybindings: {}
-  # Override hotkeys by command ID, e.g.:
-  # core:switch-region: "ctrl+r"
-
-cache:
-  enabled: true
-  ttlSeconds: 30
-
-editor:
-  command: ""     # empty = use $EDITOR / $VISUAL / vi
-  tempDir: ""     # empty = OS default temp directory
-
-bookmarks: []
-`;
-
-export async function writeDefaultConfig(configPath: string): Promise<void> {
-  await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.writeFile(configPath, DEFAULT_CONFIG_TEMPLATE, 'utf-8');
+export interface LoadConfigResult {
+  config: AppConfig;
+  /** True when no config file exists yet — triggers the setup wizard. */
+  firstRun: boolean;
+  /** The path the config was loaded from (or would be written to). */
+  configPath: string;
 }
 
-export async function loadConfig(): Promise<AppConfig> {
-  const configPath = getConfigFilePath();
+/** Write config file contents, creating parent directories as needed. */
+export async function writeConfigFile(configPath: string, contents: string): Promise<void> {
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await fs.writeFile(configPath, contents, 'utf-8');
+}
+
+/**
+ * Load and validate the config file.
+ *
+ * A missing file is not an error: it marks the run as `firstRun` (the setup
+ * wizard owns creating the file) and returns pure defaults. Parse/validation
+ * failures log to stderr and fall back to defaults, so a broken config never
+ * prevents the app from starting.
+ */
+export async function loadConfig(configPathOverride?: string): Promise<LoadConfigResult> {
+  const configPath = configPathOverride ?? getConfigFilePath();
+  const defaults = () => AppConfigSchema.parse({});
 
   let raw: string;
   try {
     raw = await fs.readFile(configPath, 'utf-8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      try {
-        await writeDefaultConfig(configPath);
-      } catch {
-        // Read-only filesystem or similar — continue with defaults
-      }
+      return { config: defaults(), firstRun: true, configPath };
     }
-    return AppConfigSchema.parse({});
+    console.error(`[paramhub] Failed to read config at ${configPath}:`, err);
+    return { config: defaults(), firstRun: false, configPath };
   }
 
   let parsed: unknown;
@@ -72,7 +51,7 @@ export async function loadConfig(): Promise<AppConfig> {
     parsed = parse(raw);
   } catch (err) {
     console.error(`[paramhub] Failed to parse config at ${configPath}:`, err);
-    return AppConfigSchema.parse({});
+    return { config: defaults(), firstRun: false, configPath };
   }
 
   const result = AppConfigSchema.safeParse(parsed ?? {});
@@ -81,8 +60,8 @@ export async function loadConfig(): Promise<AppConfig> {
       `[paramhub] Config validation errors (using defaults):`,
       result.error.flatten(),
     );
-    return AppConfigSchema.parse({});
+    return { config: defaults(), firstRun: false, configPath };
   }
 
-  return result.data;
+  return { config: result.data, firstRun: false, configPath };
 }
