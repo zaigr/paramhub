@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import { useAppState } from '../../state/index.js';
 import { useFocusManagement } from '../../hooks/use-focus-management.js';
+import { useTheme } from '../../theme/index.js';
 
 const MASK = '••••••••';
 
@@ -56,6 +57,7 @@ export default function ValuePreview({ maxHeight }: ValuePreviewProps) {
     useAppState();
   const { stdout } = useStdout();
   const { isModalOpen } = useFocusManagement();
+  const { theme } = useTheme();
   const [scrollOffset, setScrollOffset] = useState(0);
 
   // Reset scroll when the displayed value changes (new item or reloaded value).
@@ -95,14 +97,14 @@ export default function ValuePreview({ maxHeight }: ValuePreviewProps) {
       <Box marginTop={1} flexDirection="column">
         {detailValueLoading && <Text dimColor>Loading value…</Text>}
         {!detailValueLoading && detailValueError && (
-          <Text color="red">Error: {detailValueError}</Text>
+          <Text color={theme.error}>Error: {detailValueError}</Text>
         )}
         {!detailValueLoading && !detailValueError && masked && (
-          <Text color="yellow">{MASK} (press r to reveal)</Text>
+          <Text color={theme.secure}>{MASK} (press r to reveal)</Text>
         )}
         {showValue &&
           lines.slice(offset, offset + viewportHeight).map((line, i) => (
-            <Text key={offset + i} color={isSecure ? 'yellow' : undefined} wrap="truncate-end">
+            <Text key={offset + i} color={isSecure ? theme.secure : undefined} wrap="truncate-end">
               {line === '' ? ' ' : line}
             </Text>
           ))}

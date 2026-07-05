@@ -16,11 +16,14 @@
 import { Box, Text, useInput } from 'ink';
 import { useAppState, useAppDispatch } from '../../state/index.js';
 import { useItemActions } from '../../hooks/use-item-actions.js';
+import { useTheme } from '../../theme/index.js';
+import { isEnterKey } from '../../utils/keys.js';
 
 export default function SearchInput() {
   const state = useAppState();
   const dispatch = useAppDispatch();
   const { openItem } = useItemActions();
+  const { theme } = useTheme();
 
   const isFocused = state.focusZone === 'search';
   const query = state.searchQuery;
@@ -66,7 +69,7 @@ export default function SearchInput() {
       if (key.ctrl || key.meta) return; // pass through to global handler
 
       if (key.tab) return blurToList();
-      if (key.return) {
+      if (isEnterKey(input, key)) {
         if (!isLoading && items.length === 1) return openItem(items[0]!);
         return blurToList();
       }
@@ -75,7 +78,8 @@ export default function SearchInput() {
       if (key.upArrow || key.leftArrow || key.rightArrow) return;
       if (key.pageUp || key.pageDown) return;
 
-      if (input && input.length === 1) {
+      // Accept multi-char input too (paste / batched delivery)
+      if (input) {
         dispatch({ type: 'SET_SEARCH_QUERY', query: query + input });
       }
     },
@@ -84,15 +88,15 @@ export default function SearchInput() {
 
   return (
     <Box>
-      <Text color={isFocused ? 'cyan' : 'gray'} bold={isFocused}>
+      <Text color={isFocused ? theme.accent : theme.muted} bold={isFocused}>
         /
       </Text>
-      <Text color={isFocused ? 'white' : 'gray'}>
+      <Text color={isFocused ? theme.inputText : theme.muted}>
         {' '}
         {query}
       </Text>
       {isFocused && (
-        <Text color="cyan" bold>
+        <Text color={theme.accent} bold>
           _
         </Text>
       )}

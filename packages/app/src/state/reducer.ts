@@ -13,7 +13,9 @@ export type ModalType =
   | 'confirm'
   | 'create-item'
   | 'region-picker'
-  | 'profile-picker';
+  | 'profile-picker'
+  | 'help'
+  | 'setup-wizard';
 
 export interface ModalState {
   type: ModalType;
@@ -23,8 +25,8 @@ export interface ModalState {
 /** A single rendered diff/preview line for the confirm modal. */
 export interface DiffLine {
   text: string;
-  /** Ink color name (e.g. 'green' for additions, 'red' for removals). */
-  color?: string;
+  /** Semantic kind; mapped to theme colors at render time. */
+  kind?: 'added' | 'removed';
 }
 
 /**

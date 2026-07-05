@@ -15,6 +15,8 @@ import type { Command } from '@paramhub/types';
 import { commandRegistry } from '../commands/registry.js';
 import { useCommandContext } from '../hooks/use-command-context.js';
 import { useAppDispatch } from '../state/index.js';
+import { useTheme } from '../theme/index.js';
+import { isEnterKey } from '../utils/keys.js';
 import Modal from './modals/Modal.js';
 
 /** Maximum number of results to display in the palette. */
@@ -33,6 +35,7 @@ export default function CommandPalette() {
   const context = useCommandContext();
   const dispatch = useAppDispatch();
   const { exit } = useApp();
+  const { theme } = useTheme();
 
   // Get filtered commands from registry, excluding internal palette navigation
   const results: Command[] = useMemo(() => {
@@ -85,7 +88,7 @@ export default function CommandPalette() {
       closePalette();
       return;
     }
-    if (key.return) {
+    if (isEnterKey(input, key)) {
       executeSelected();
       return;
     }
@@ -129,7 +132,7 @@ export default function CommandPalette() {
   return (
     <Modal title="Command Palette" width={56}>
       <Box>
-        <Text color="gray">&gt; </Text>
+        <Text color={theme.muted}>&gt; </Text>
         <Text>{query}</Text>
         <Text dimColor>{query.length === 0 ? 'Type to search commands...' : ''}</Text>
       </Box>
@@ -155,13 +158,13 @@ export default function CommandPalette() {
             return (
               <Text key={cmd.id}>
                 <Text
-                  color={isSelected ? 'cyan' : enabled ? undefined : 'gray'}
+                  color={isSelected ? theme.accent : enabled ? undefined : theme.muted}
                   bold={isSelected}
                   dimColor={!enabled && !isSelected}
                 >
                   {prefix}{paddedLabel}
                 </Text>
-                <Text dimColor={!isSelected} color={isSelected ? 'cyan' : 'gray'}>
+                <Text dimColor={!isSelected} color={isSelected ? theme.accent : theme.muted}>
                   {hotkeyStr}
                 </Text>
               </Text>

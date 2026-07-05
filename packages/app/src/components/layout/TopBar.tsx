@@ -8,6 +8,7 @@
 import { Box, Text } from 'ink';
 import type { Provider } from '@paramhub/types';
 import { useAppState } from '../../state/index.js';
+import { useTheme } from '../../theme/index.js';
 
 interface TopBarProps {
   providers: Provider[];
@@ -15,6 +16,7 @@ interface TopBarProps {
 
 export default function TopBar({ providers }: TopBarProps) {
   const { activeProviderId, activeCustomTabId, view } = useAppState();
+  const { theme } = useTheme();
 
   const activeProvider = providers.find((p) => p.id === activeProviderId);
   const customTabs = activeProvider?.getCapabilities().customTabs ?? [];
@@ -22,12 +24,12 @@ export default function TopBar({ providers }: TopBarProps) {
   return (
     <Box
       borderStyle="single"
-      borderColor="gray"
+      borderColor={theme.border}
       paddingX={1}
       justifyContent="space-between"
     >
       <Box gap={1}>
-        <Text bold color="cyan">
+        <Text bold color={theme.accent}>
           paramhub
         </Text>
         <Text dimColor>│</Text>
@@ -36,7 +38,7 @@ export default function TopBar({ providers }: TopBarProps) {
           return (
             <Box key={provider.id} marginRight={1}>
               <Text
-                color={isActive ? 'cyan' : undefined}
+                color={isActive ? theme.accent : undefined}
                 bold={isActive}
                 dimColor={!isActive}
               >
@@ -51,7 +53,7 @@ export default function TopBar({ providers }: TopBarProps) {
           const isActive = view === 'provider-tab' && activeCustomTabId === tab.id;
           return (
             <Box key={tab.id} marginRight={1}>
-              <Text color={isActive ? 'cyan' : undefined} bold={isActive} dimColor={!isActive}>
+              <Text color={isActive ? theme.accent : undefined} bold={isActive} dimColor={!isActive}>
                 {tab.label}
               </Text>
             </Box>

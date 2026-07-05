@@ -9,12 +9,14 @@ import { Box, Text } from 'ink';
 import type { ProviderContext } from '@paramhub/types';
 import { useAppState } from '../../state/index.js';
 import { commandRegistry } from '../../commands/registry.js';
+import { useTheme } from '../../theme/index.js';
 
 /** Get abbreviated hotkey hints for the status bar. */
 function getHotkeyHints(): Array<{ label: string; hotkey: string }> {
   const hintCommands = [
     'core:toggle-command-palette',
     'core:focus-search',
+    'core:show-help',
     'core:quit',
   ];
 
@@ -31,6 +33,7 @@ function getHotkeyHints(): Array<{ label: string; hotkey: string }> {
 
 export default function StatusBar() {
   const { activeProviderId, providerContexts, error, statusMessage } = useAppState();
+  const { theme } = useTheme();
 
   const context: ProviderContext | undefined = activeProviderId
     ? providerContexts.get(activeProviderId)
@@ -41,7 +44,7 @@ export default function StatusBar() {
   return (
     <Box
       borderStyle="single"
-      borderColor="gray"
+      borderColor={theme.border}
       paddingX={1}
       justifyContent="space-between"
     >
@@ -49,12 +52,12 @@ export default function StatusBar() {
         {context ? (
           <>
             {context.region && (
-              <Text color="yellow">{context.region}</Text>
+              <Text color={theme.warning}>{context.region}</Text>
             )}
             {context.profile && (
               <>
                 <Text dimColor>│</Text>
-                <Text color="green">{context.profile}</Text>
+                <Text color={theme.success}>{context.profile}</Text>
               </>
             )}
             {context.account && (
@@ -71,7 +74,7 @@ export default function StatusBar() {
           <>
             <Text dimColor>│</Text>
             <Box flexShrink={1}>
-              <Text color="red" wrap="truncate-end">{error}</Text>
+              <Text color={theme.error} wrap="truncate-end">{error}</Text>
             </Box>
           </>
         )}
@@ -79,7 +82,7 @@ export default function StatusBar() {
           <>
             <Text dimColor>│</Text>
             <Box flexShrink={1}>
-              <Text color="green" wrap="truncate-end">{statusMessage}</Text>
+              <Text color={theme.success} wrap="truncate-end">{statusMessage}</Text>
             </Box>
           </>
         )}
@@ -87,7 +90,7 @@ export default function StatusBar() {
       <Box gap={2}>
         {hints.map((hint) => (
           <Text key={hint.hotkey} dimColor>
-            <Text color="white">{hint.hotkey}</Text> {hint.label}
+            <Text color={theme.hotkey}>{hint.hotkey}</Text> {hint.label}
           </Text>
         ))}
       </Box>
