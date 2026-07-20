@@ -33,6 +33,12 @@ export const AppConfigSchema = z.object({
     })
     .default({}),
   bookmarks: z.array(BookmarkSchema).default([]),
+  list: z
+    .object({
+      /** Providers without a hierarchy always list flat regardless of this. */
+      defaultMode: z.enum(['tree', 'flat']).default('tree'),
+    })
+    .default({}),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

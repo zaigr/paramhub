@@ -12,6 +12,8 @@ export interface ConfigTemplateOptions {
   theme?: string;
   /** Enable the AWS SSM provider entry (default true). */
   awsEnabled?: boolean;
+  /** Enable the AWS S3 provider entry (default false). */
+  s3Enabled?: boolean;
   /** Enable the built-in mock/demo provider entry (default false). */
   mockEnabled?: boolean;
   /** Editor command; empty string means $EDITOR / $VISUAL / platform fallback. */
@@ -26,7 +28,9 @@ function yamlString(value: string): string {
 export function renderConfigTemplate(options: ConfigTemplateOptions = {}): string {
   const theme = options.theme ?? 'dark';
   const awsEnabled = options.awsEnabled ?? true;
+  const s3Enabled = options.s3Enabled ?? false;
   const mockEnabled = options.mockEnabled ?? false;
+  const defaultProvider = s3Enabled && !awsEnabled ? 'aws-s3' : 'aws-ssm';
   const editorCommand = options.editorCommand ?? '';
 
   return `# paramhub configuration
@@ -37,7 +41,7 @@ export function renderConfigTemplate(options: ConfigTemplateOptions = {}): strin
 theme: ${yamlString(theme)}
 
 # Provider tab activated at startup (provider id).
-defaultProvider: "aws-ssm"
+defaultProvider: ${yamlString(defaultProvider)}
 
 # Parameter-store providers to load. Each entry is an npm package that
 # implements the paramhub provider contract; disabled entries are skipped.
@@ -49,6 +53,16 @@ providers:
       defaultProfile: "default"      # AWS shared-config profile
       decryptSecureStrings: true     # decrypt SecureString values on read
 
+  # S3 objects as parameters. Buckets are the top level of the tree, so
+  # browsing the root lists buckets and drilling in walks key prefixes.
+  - package: "@paramhub/provider-aws-s3"
+    enabled: ${s3Enabled}
+    config:
+      defaultRegion: "us-east-1"     # region for ListBuckets; per-bucket regions are resolved automatically
+      defaultProfile: "default"      # AWS shared-config profile
+      buckets: ""                    # comma-separated; searched when no branch scopes the query
+      maxValueBytes: "1048576"       # refuse to display objects larger than this (1 MiB)
+
   # Built-in demo provider with fake data — no cloud access needed.
   # Also useful as a second tab for testing Tab/Shift+Tab switching.
   - package: "@paramhub/types/mock"
@@ -59,6 +73,13 @@ providers:
 #   core:switch-region: "ctrl+r"
 #   core:focus-search: "ctrl+f"
 keybindings: {}
+
+# List behaviour.
+list:
+  # tree = browse the hierarchy one level at a time (→/Enter to enter a branch,
+  #        ←/Esc to go back). flat = one searchable list of full paths.
+  # Providers without a hierarchy always list flat. Toggle at runtime with "t".
+  defaultMode: "tree"
 
 # Search-result cache.
 cache:

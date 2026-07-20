@@ -7,6 +7,7 @@
  */
 
 import type { Item } from './items.js';
+import type { TreeNode } from './tree.js';
 
 /** The current application state context passed to commands. */
 export interface CommandContext {
@@ -14,8 +15,16 @@ export interface CommandContext {
   activeProviderId: string | null;
   /** The current view mode. */
   view: 'list' | 'detail' | 'bookmarks' | 'provider-tab';
-  /** The currently selected item, or null if none. */
+  /**
+   * The currently selected item, or null if none.
+   *
+   * Null whenever a *branch* is selected, so commands gated on a concrete item
+   * (copy, edit, delete) disable themselves on a branch without extra checks.
+   * Use `selectedNode` to act on branches.
+   */
   selectedItem: Item | null;
+  /** The selected tree node, when the active list is tree-shaped. */
+  selectedNode?: TreeNode | null;
   /** The current search query string. */
   searchQuery: string;
 }

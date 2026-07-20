@@ -21,7 +21,7 @@ import Modal from './Modal.js';
 
 export interface SetupChoices {
   theme: string;
-  provider: 'aws-ssm' | 'mock';
+  provider: 'aws-ssm' | 'aws-s3' | 'mock';
   /** Editor command; empty string = $EDITOR / $VISUAL / platform fallback. */
   editorCommand: string;
 }
@@ -30,6 +30,7 @@ type Step = 'theme' | 'provider' | 'editor' | 'editor-custom' | 'confirm';
 
 const PROVIDER_OPTIONS: SelectOption[] = [
   { label: 'AWS SSM Parameter Store', value: 'aws-ssm', hint: '(needs AWS credentials)' },
+  { label: 'AWS S3', value: 'aws-s3', hint: '(needs AWS credentials)' },
   { label: 'None — built-in demo data', value: 'mock' },
 ];
 

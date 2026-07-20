@@ -4,7 +4,5 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    // Keeps config/state writes out of the developer's real home dir.
-    setupFiles: ['./tests/setup.ts'],
   },
 });

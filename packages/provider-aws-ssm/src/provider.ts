@@ -17,11 +17,15 @@ import {
 } from '@aws-sdk/client-ssm';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import type {
+  BranchNode,
+  BrowseOptions,
+  BrowseResult,
   Command,
   ConnectionTestResult,
   DetailField,
   Item,
   ItemType,
+  LeafNode,
   Provider,
   ProviderCapabilities,
   ProviderConfigField,
@@ -29,8 +33,10 @@ import type {
   ProviderFactory,
   SearchOptions,
   SearchResult,
+  TreeNode,
 } from '@paramhub/types';
 import { lastSegment } from '@paramhub/types';
+import { AWS_REGIONS } from '@paramhub/aws-common';
 
 import { createSsmClient, createStsClient, describeAwsError } from './auth.js';
 import {
@@ -48,28 +54,21 @@ import {
 } from './mapper.js';
 import { getCommands } from './commands.js';
 
-/** Common AWS regions offered for switching (SSM has no list-regions API). */
-const AWS_REGIONS = [
-  'us-east-1',
-  'us-east-2',
-  'us-west-1',
-  'us-west-2',
-  'ca-central-1',
-  'eu-west-1',
-  'eu-west-2',
-  'eu-west-3',
-  'eu-central-1',
-  'eu-north-1',
-  'ap-south-1',
-  'ap-southeast-1',
-  'ap-southeast-2',
-  'ap-northeast-1',
-  'ap-northeast-2',
-  'sa-east-1',
-];
-
 const DESCRIBE_MAX = 50;
 const GET_BY_PATH_MAX = 10;
+
+/** SSM paths are absolute, so the top of the hierarchy is the delimiter itself. */
+const SSM_ROOT_PATH = '/';
+const SSM_DELIMITER = '/';
+
+/**
+ * Page cap for a single browse() scan (20 × 50 = 1000 parameters per branch).
+ *
+ * browse() must read the whole subtree before it can report a complete branch
+ * set (see the docblock on browse), so this bounds a pathological branch rather
+ * than paginating.
+ */
+const BROWSE_MAX_PAGES = 20;
 
 export class AwsSsmProvider implements Provider {
   readonly id = 'aws-ssm';
@@ -139,6 +138,7 @@ export class AwsSsmProvider implements Provider {
       canSearch: true,
       canSwitchRegion: true,
       canSwitchAccount: true,
+      hierarchy: { delimiter: SSM_DELIMITER, rootPath: SSM_ROOT_PATH },
       supportedItemTypes: ['string', 'secure', 'list'],
       customActions: [],
       customTabs: [],
@@ -261,6 +261,93 @@ export class AwsSsmProvider implements Provider {
       metadataToItem(m, this.region, this.account),
     );
     return { items, nextToken: res.NextToken };
+  }
+
+  /**
+   * Enumerate the direct children of a branch.
+   *
+   * SSM has no prefix-enumeration API: GetParametersByPath with
+   * Recursive:false returns the *parameters* one level down and never the
+   * child prefixes, so `/app/prod/db/host` yields no `db` branch. Branches
+   * must therefore be synthesized from a recursive scan of the subtree.
+   *
+   * DescribeParameters (MaxResults 50) is used rather than
+   * GetParametersByPath (hard cap 10) for 5× fewer round trips, and because
+   * its ParameterMetadata maps through metadataToItem — making browse leaves
+   * shape-identical to search results (same ARN, tier, dataType).
+   *
+   * nextToken is always undefined: branches aggregate over the whole subtree,
+   * so a partial scan would report a partial branch set and repeat those same
+   * branches on the next page. The scan runs to exhaustion behind
+   * BROWSE_MAX_PAGES and maxResults is applied as a client-side slice.
+   */
+  async browse(options: BrowseOptions): Promise<BrowseResult> {
+    const { path = SSM_ROOT_PATH, maxResults } = options;
+
+    // Root is already the delimiter; deeper branches ('/app') are not
+    // delimiter-terminated, so normalize before matching — otherwise '/app'
+    // would also capture '/apple/...'.
+    const prefix = path.endsWith(SSM_DELIMITER) ? path : path + SSM_DELIMITER;
+
+    // The Path filter rejects a bare '/', so the root scans unfiltered.
+    const filters: ParameterStringFilter[] | undefined =
+      prefix === SSM_ROOT_PATH
+        ? undefined
+        : [{ Key: 'Path', Option: 'Recursive', Values: [path] }];
+
+    const branches = new Map<string, BranchNode>();
+    const leaves: LeafNode[] = [];
+    let token: string | undefined;
+    let pages = 0;
+
+    do {
+      const res = await this.run(() =>
+        this.ssm.send(
+          new DescribeParametersCommand({
+            MaxResults: DESCRIBE_MAX,
+            NextToken: token,
+            ParameterFilters: filters,
+          }),
+        ),
+      );
+
+      for (const meta of res.Parameters ?? []) {
+        const name = meta.Name;
+        if (!name || !name.startsWith(prefix)) {
+          continue;
+        }
+        const rest = name.slice(prefix.length);
+        const cut = rest.indexOf(SSM_DELIMITER);
+        if (cut === -1) {
+          leaves.push({
+            kind: 'leaf',
+            item: metadataToItem(meta, this.region, this.account),
+          });
+          continue;
+        }
+        // Not delimiter-terminated, matching SSM's own path convention; round
+        // trips verbatim into both browse() and GetParametersByPath({ Path }).
+        const branchPath = prefix + rest.slice(0, cut);
+        if (!branches.has(branchPath)) {
+          branches.set(branchPath, {
+            kind: 'branch',
+            path: branchPath,
+            name: lastSegment(branchPath, SSM_DELIMITER),
+          });
+        }
+      }
+
+      token = res.NextToken;
+      pages += 1;
+    } while (token && pages < BROWSE_MAX_PAGES);
+
+    // Branches before leaves, the order a tree UI renders a level in.
+    const nodes: TreeNode[] = [...branches.values(), ...leaves];
+
+    return {
+      nodes: maxResults === undefined ? nodes : nodes.slice(0, maxResults),
+      nextToken: undefined,
+    };
   }
 
   async getItem(id: string): Promise<Item> {

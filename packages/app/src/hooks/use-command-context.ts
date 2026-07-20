@@ -12,13 +12,19 @@ import { useAppState } from '../state/index.js';
 export function useCommandContext(): CommandContext {
   const state = useAppState();
 
+  const node = state.view === 'detail' ? null : state.nodes[state.selectedIndex] ?? null;
+
   return {
     activeProviderId: state.activeProviderId,
     view: state.view,
+    selectedNode: node,
+    // Deliberately null on a branch — see CommandContext.selectedItem.
     selectedItem:
       state.view === 'detail'
         ? state.selectedItem
-        : state.items[state.selectedIndex] ?? null,
+        : node?.kind === 'leaf'
+          ? node.item
+          : null,
     searchQuery: state.searchQuery,
   };
 }

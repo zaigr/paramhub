@@ -79,8 +79,16 @@ function applyFilters(
   if (!filters) return params;
   return params.filter((p) =>
     filters.every((f) => {
-      if (f.Key !== 'Name') return true;
       const value = f.Values?.[0] ?? '';
+      if (f.Key === 'Path') {
+        // AWS matches on a segment boundary, so '/app' never captures '/apple/x'.
+        const prefix = value.endsWith('/') ? value : value + '/';
+        if (f.Option === 'OneLevel') {
+          return p.Name.startsWith(prefix) && !p.Name.slice(prefix.length).includes('/');
+        }
+        return p.Name.startsWith(prefix); // Recursive (default)
+      }
+      if (f.Key !== 'Name') return true;
       if (f.Option === 'Equals') return p.Name === value;
       if (f.Option === 'BeginsWith') return p.Name.startsWith(value);
       return p.Name.includes(value); // Contains (default)
@@ -325,6 +333,50 @@ describe('AwsSsmProvider — behavior', () => {
     for (const item of page2.items) {
       expect(page1Ids.has(item.id)).toBe(false);
     }
+  });
+
+  it('declares a hierarchy so the app can browse it as a tree', () => {
+    expect(provider.getCapabilities().hierarchy).toEqual({
+      delimiter: '/',
+      rootPath: '/',
+    });
+  });
+
+  it('browses the root into top-level branches only', async () => {
+    const result = await provider.browse({});
+    expect(result.nodes.map((n) => (n.kind === 'branch' ? n.path : n.item.id))).toEqual([
+      '/app',
+      '/shared',
+    ]);
+    expect(result.nodes.every((n) => n.kind === 'branch')).toBe(true);
+    // A recursive scan cannot page without repeating branches; see browse()'s docblock.
+    expect(result.nextToken).toBeUndefined();
+  });
+
+  it('browses a branch into its direct children, branches before leaves', async () => {
+    const result = await provider.browse({ path: '/app/staging' });
+    expect(result.nodes).toEqual([
+      { kind: 'branch', path: '/app/staging/db', name: 'db' },
+      expect.objectContaining({ kind: 'leaf' }),
+    ]);
+    const leaf = result.nodes[1]!;
+    expect(leaf.kind === 'leaf' && leaf.item.path).toBe('/app/staging/feature-flags');
+    // Search results and browse leaves must agree: metadataToItem supplies the ARN.
+    expect(leaf.kind === 'leaf' && leaf.item.metadata.version).toBe(1);
+    expect(leaf.kind === 'leaf' && leaf.item.value).toBeUndefined();
+  });
+
+  it('does not capture a sibling branch sharing a name prefix', async () => {
+    addParam('/apple/decoy');
+    const result = await provider.browse({ path: '/app' });
+    const paths = result.nodes.map((n) => (n.kind === 'branch' ? n.path : n.item.id));
+    expect(paths).toEqual(['/app/prod', '/app/staging']);
+    expect(paths).not.toContain('/apple/decoy');
+  });
+
+  it('applies maxResults as a client-side slice', async () => {
+    const result = await provider.browse({ maxResults: 1 });
+    expect(result.nodes.length).toBe(1);
   });
 
   it('reports canSwitchAccount since profile switching is supported', () => {

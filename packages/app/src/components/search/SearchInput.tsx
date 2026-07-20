@@ -27,7 +27,7 @@ export default function SearchInput() {
 
   const isFocused = state.focusZone === 'search';
   const query = state.searchQuery;
-  const items = state.items;
+  const nodes = state.nodes;
   const isLoading = state.isLoading;
 
   const blurToList = () => dispatch({ type: 'SET_FOCUS', zone: 'list' });
@@ -70,7 +70,10 @@ export default function SearchInput() {
 
       if (key.tab) return blurToList();
       if (isEnterKey(input, key)) {
-        if (!isLoading && items.length === 1) return openItem(items[0]!);
+        // Shortcut only for a lone leaf — a lone branch needs a drill-in, which
+        // is the list's job, so blur and let the user press Enter again there.
+        const only = nodes.length === 1 ? nodes[0] : undefined;
+        if (!isLoading && only?.kind === 'leaf') return openItem(only.item);
         return blurToList();
       }
 

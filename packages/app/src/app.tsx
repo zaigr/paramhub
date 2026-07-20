@@ -5,9 +5,11 @@
  * and renders the main layout with global keybinding handling.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useApp } from 'ink';
 import type { Provider } from '@paramhub/types';
+import type { ListMode } from './state/reducer.js';
+import { listModeFor } from './state/reducer.js';
 import { MockProviderFactory } from '@paramhub/types/mock';
 import type { AppConfig } from './config/schema.js';
 import { AppConfigSchema } from './config/schema.js';
@@ -20,7 +22,8 @@ import { commandRegistry, createCoreCommands, applyKeybindingOverrides } from '.
 import { useCommandContext } from './hooks/use-command-context.js';
 import { useGlobalKeybindings } from './hooks/use-global-keybindings.js';
 import { useFocusManagement } from './hooks/use-focus-management.js';
-import { useSearch } from './hooks/use-search.js';
+import { useList } from './hooks/use-list.js';
+import { effectiveListMode, supportsBothModes } from './hooks/use-list-mode.js';
 import { useStatus } from './hooks/use-status.js';
 import { useEditor, EditorProvider } from './hooks/use-editor.js';
 import { ThemeProvider, useTheme } from './theme/index.js';
@@ -35,6 +38,7 @@ import type { SetupChoices } from './components/modals/SetupWizard.js';
 import Modal from './components/modals/Modal.js';
 import SearchInput from './components/search/SearchInput.js';
 import ItemList from './components/list/ItemList.js';
+import Breadcrumb from './components/list/Breadcrumb.js';
 import DetailPanel from './components/detail/DetailPanel.js';
 
 /** Content area — renders the current view based on app state. */
@@ -53,9 +57,16 @@ function ContentArea({
     ? state.providers.get(state.activeProviderId) ?? null
     : null;
 
-  // Search hook — debounced, cached, with pagination
-  const { loadNextPage } = useSearch({
+  const listMode = effectiveListMode(listModeFor(state), activeProvider);
+  // Derived, never stored: only the provider knows whether its root is '/' or ''.
+  const browsePath = state.branchStack.at(-1)?.path;
+
+  // List hook — debounced, cached, with pagination. Drives browse() or search()
+  // depending on the mode and whether a query is active.
+  const { loadNextPage } = useList({
     provider: activeProvider,
+    mode: listMode,
+    browsePath,
     state,
     dispatch,
   });
@@ -72,7 +83,13 @@ function ContentArea({
     );
   }
 
-  const base = <BaseView activeProvider={activeProvider} onLoadNextPage={loadNextPage} />;
+  const base = (
+    <BaseView
+      activeProvider={activeProvider}
+      onLoadNextPage={loadNextPage}
+      listMode={listMode}
+    />
+  );
 
   const modal = state.modal;
   let overlay: React.ReactNode = null;
@@ -120,25 +137,47 @@ function FloatingLayer({ base, children }: { base: React.ReactNode; children: Re
 function BaseView({
   activeProvider,
   onLoadNextPage,
+  listMode,
 }: {
   activeProvider: Provider | null;
   onLoadNextPage: () => void;
+  listMode: ListMode;
 }) {
   const state = useAppState();
   const { theme } = useTheme();
 
   if (state.view === 'list') {
+    const treeMode = listMode === 'tree';
+    // Full paths only in flat mode, where a row could have come from anywhere.
+    // Tree rows are always one level deep and the breadcrumb says where we are —
+    // including while filtering, which never reaches outside the level.
+    const showFullPath = !treeMode;
+
     return (
       <Box flexDirection="column" flexGrow={1} paddingX={1}>
         <SearchInput />
-        {state.items.length === 0 && !state.isLoading && !state.searchQuery && (
+        {treeMode && <Breadcrumb provider={activeProvider} />}
+        {state.nodes.length === 0 && !state.isLoading && !state.searchQuery && (
           <Box paddingY={1}>
-            <Text dimColor>No items loaded. Press / to search or Ctrl+P for commands.</Text>
+            <Text dimColor>
+              {/* An empty list is ambiguous — it can mean "nothing here" or
+                  "this mode cannot list this store". Name the other mode when
+                  one exists, so the way out is visible. */}
+              {state.error
+                ? 'Nothing to list.'
+                : 'No items loaded. Press / to search or Ctrl+P for commands.'}
+              {supportsBothModes(activeProvider) &&
+                ` Press t for ${treeMode ? 'flat' : 'tree'} view.`}
+            </Text>
           </Box>
         )}
-        {state.items.length === 0 && !state.isLoading && state.searchQuery && (
+        {state.nodes.length === 0 && !state.isLoading && state.searchQuery && (
           <Box paddingY={1}>
-            <Text dimColor>No results for &quot;{state.searchQuery}&quot;</Text>
+            <Text dimColor>
+              {treeMode
+                ? `Nothing at this level matches "${state.searchQuery}". Press t to search the whole store.`
+                : `No results for "${state.searchQuery}"`}
+            </Text>
           </Box>
         )}
         {state.error && (
@@ -147,11 +186,14 @@ function BaseView({
           </Box>
         )}
         <ItemList
-          items={state.items}
+          nodes={state.nodes}
           selectedIndex={state.selectedIndex}
           isLoading={state.isLoading}
           hasNextPage={!!state.nextToken}
           onLoadNextPage={onLoadNextPage}
+          showFullPath={showFullPath}
+          // The breadcrumb occupies one extra chrome row.
+          reservedRows={treeMode ? 7 : 6}
         />
       </Box>
     );
@@ -182,6 +224,8 @@ interface AppProps {
   configPath?: string;
   /** True when no config file exists yet — opens the setup wizard on boot. */
   firstRun?: boolean;
+  /** Per-provider list modes restored from the UI state file. */
+  listModes?: Record<string, ListMode>;
 }
 
 /** Inner app component with access to state context. */
@@ -194,6 +238,13 @@ function AppInner({
   const dispatch = useAppDispatch();
   const context = useCommandContext();
   const { isGlobalKeybindingsActive } = useFocusManagement();
+
+  // Commands are registered once per config/provider change, so they cannot
+  // close over state directly — read it through a ref that tracks every render.
+  const state = useAppState();
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const { exit } = useApp();
   const { setThemeName } = useTheme();
 
@@ -235,6 +286,7 @@ function AppInner({
         renderConfigTemplate({
           theme: choices.theme,
           awsEnabled: choices.provider === 'aws-ssm',
+          s3Enabled: choices.provider === 'aws-s3',
           mockEnabled: choices.provider === 'mock',
           editorCommand: choices.editorCommand,
         }),
@@ -287,6 +339,10 @@ function AppInner({
       setStatus,
       runEditor: editor.runEditor,
       reloadConfig,
+      // Read through refs so the commands always see current state without
+      // re-registering the whole registry on every list change.
+      getListMode: () => listModeFor(stateRef.current),
+      getBranchDepth: () => stateRef.current.branchStack.length,
     });
     commandRegistry.registerAll(coreCommands);
 
@@ -346,7 +402,10 @@ function AppInner({
 /** Root App component — wraps with state + theme providers. */
 export default function App(props: AppProps) {
   return (
-    <AppStateProvider>
+    <AppStateProvider
+      initialListMode={props.config?.list?.defaultMode}
+      initialListModes={props.listModes}
+    >
       <ThemeProvider initialThemeName={props.config?.theme}>
         <AppInner {...props} />
       </ThemeProvider>

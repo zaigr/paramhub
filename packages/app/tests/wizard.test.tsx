@@ -17,7 +17,7 @@ import { MockProviderFactory } from '@paramhub/types/mock';
 import App from '../src/app.js';
 import { AppConfigSchema } from '../src/config/schema.js';
 import { commandRegistry } from '../src/commands/registry.js';
-import { clearSearchCache } from '../src/hooks/use-search.js';
+import { clearListCache } from '../src/hooks/use-list.js';
 
 const ESC = '';
 const DOWN = '[B';
@@ -58,7 +58,7 @@ async function bootFirstRun(): Promise<RenderResult & { configPath: string }> {
 beforeEach(async () => {
   commandRegistry.clear();
   commandRegistry.setOverrides({});
-  clearSearchCache();
+  clearListCache();
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paramhub-wizard-'));
 });
 
@@ -84,6 +84,8 @@ describe('setup wizard', () => {
     await vi.waitFor(() => expect(lastFrame()).toContain('Setup (2/4)'));
 
     // Provider step: pick "None — built-in demo data".
+    // Three provider options now, so "None" is two moves down.
+    await press(stdin, DOWN);
     await press(stdin, DOWN);
     await vi.waitFor(() => expect(lastFrame()).toContain('> None'));
     await press(stdin, '\r');
@@ -111,7 +113,7 @@ describe('setup wizard', () => {
       package: '@paramhub/provider-aws-ssm',
       enabled: false,
     });
-    expect(written.providers[1]).toMatchObject({
+    expect(written.providers[2]).toMatchObject({
       package: '@paramhub/types/mock',
       enabled: true,
     });
@@ -126,6 +128,8 @@ describe('setup wizard', () => {
 
     await press(stdin, '\r'); // theme: dark
     await vi.waitFor(() => expect(lastFrame()).toContain('Setup (2/4)'));
+    // Three provider options now, so "None" is two moves down.
+    await press(stdin, DOWN);
     await press(stdin, DOWN);
     await vi.waitFor(() => expect(lastFrame()).toContain('> None'));
     await press(stdin, '\r'); // provider: demo

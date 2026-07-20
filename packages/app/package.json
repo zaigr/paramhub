@@ -22,6 +22,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@paramhub/provider-aws-s3": "workspace:*",
     "@paramhub/provider-aws-ssm": "workspace:*",
     "@paramhub/types": "workspace:*",
     "clipboardy": "^4.0.0",

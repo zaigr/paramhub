@@ -6,6 +6,7 @@ import type { Provider } from '@paramhub/types';
 import { MockProviderFactory } from '@paramhub/types/mock';
 import { parseCliArgs, USAGE } from './cli-args.js';
 import { loadConfig } from './config/loader.js';
+import { loadUiState } from './config/ui-state.js';
 import { renderConfigTemplate } from './config/template.js';
 import { ProviderManager } from './providers/manager.js';
 import { enterAltScreen, exitAltScreen } from './utils/terminal.js';
@@ -52,6 +53,7 @@ async function main() {
   }
 
   const { config, firstRun, configPath } = await loadConfig(args.configPath);
+  const uiState = await loadUiState();
 
   const manager = new ProviderManager();
   await manager.loadAll(config.providers);
@@ -70,7 +72,15 @@ async function main() {
 
   enterAltScreen();
 
-  const instance = render(React.createElement(App, { providers, config, configPath, firstRun }));
+  const instance = render(
+    React.createElement(App, {
+      providers,
+      config,
+      configPath,
+      firstRun,
+      listModes: uiState.listModes,
+    }),
+  );
 
   instance.waitUntilExit().then(async () => {
     await manager.disposeAll();

@@ -1,26 +1,35 @@
 /**
- * ItemList — Scrollable flat list of parameters with viewport windowing.
+ * ItemList — Scrollable list of tree nodes with viewport windowing.
  *
- * Displays a window of items that fits the available terminal height.
- * Automatically scrolls to keep the selected item in view.
+ * Displays a window of nodes that fits the available terminal height.
+ * Automatically scrolls to keep the selected node in view.
  * Triggers pagination (loadNextPage) when the selection reaches the bottom.
  */
 
 import { Box, Text, useStdout } from 'ink';
-import type { Item } from '@paramhub/types';
+import type { TreeNode } from '@paramhub/types';
 import { useTheme } from '../../theme/index.js';
 import ItemRow from './ItemRow.js';
 
 interface ItemListProps {
-  items: Item[];
+  nodes: TreeNode[];
   selectedIndex: number;
   isLoading: boolean;
   hasNextPage: boolean;
   onLoadNextPage: () => void;
+  /** Leaf rows show their full path rather than just their name. */
+  showFullPath: boolean;
+  /**
+   * Rows occupied by chrome around the list.
+   *
+   * Callers that render extra chrome (e.g. the breadcrumb) must raise this, or
+   * the list overflows its box and pushes the StatusBar off-screen.
+   */
+  reservedRows?: number;
 }
 
 /**
- * Number of rows reserved for chrome (TopBar border + padding + StatusBar + SearchInput + margins).
+ * Default rows reserved for chrome (TopBar border + padding + StatusBar + SearchInput + margins).
  * TopBar: 3 lines (border top, content, border bottom)
  * SearchInput: 1 line
  * StatusBar: 1 line
@@ -29,55 +38,63 @@ interface ItemListProps {
  */
 const CHROME_ROWS = 6;
 
+/** Stable React key — branches have no id, and a branch path could equal a leaf id. */
+function nodeKey(node: TreeNode): string {
+  return node.kind === 'branch' ? `b:${node.path}` : `l:${node.item.id}`;
+}
+
 export default function ItemList({
-  items,
+  nodes,
   selectedIndex,
   isLoading,
   hasNextPage,
   onLoadNextPage,
+  showFullPath,
+  reservedRows = CHROME_ROWS,
 }: ItemListProps) {
   const { stdout } = useStdout();
   const { theme } = useTheme();
   const terminalRows = stdout?.rows ?? 24;
-  const viewportHeight = Math.max(5, terminalRows - CHROME_ROWS);
+  const viewportHeight = Math.max(5, terminalRows - reservedRows);
 
   // Calculate scroll offset to keep selectedIndex in view
   const scrollOffset = Math.max(
     0,
     Math.min(
       selectedIndex - Math.floor(viewportHeight / 2),
-      Math.max(0, items.length - viewportHeight),
+      Math.max(0, nodes.length - viewportHeight),
     ),
   );
 
   // Slice the visible window
-  const visibleItems = items.slice(scrollOffset, scrollOffset + viewportHeight);
+  const visibleNodes = nodes.slice(scrollOffset, scrollOffset + viewportHeight);
 
-  // Trigger pagination when selection reaches near the bottom of loaded items.
-  // Guard on items.length > 0: for an empty list `selectedIndex >= -3` is
+  // Trigger pagination when selection reaches near the bottom of loaded nodes.
+  // Guard on nodes.length > 0: for an empty list `selectedIndex >= -3` is
   // always true, which would fire a (possibly stale) token with nothing loaded.
   if (
     hasNextPage &&
     !isLoading &&
-    items.length > 0 &&
-    selectedIndex >= items.length - 3
+    nodes.length > 0 &&
+    selectedIndex >= nodes.length - 3
   ) {
     onLoadNextPage();
   }
 
-  if (items.length === 0 && !isLoading) {
+  if (nodes.length === 0 && !isLoading) {
     return null;
   }
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      {visibleItems.map((item, i) => {
+      {visibleNodes.map((node, i) => {
         const actualIndex = scrollOffset + i;
         return (
           <ItemRow
-            key={item.id}
-            item={item}
+            key={nodeKey(node)}
+            node={node}
             isSelected={actualIndex === selectedIndex}
+            showFullPath={showFullPath}
           />
         );
       })}
@@ -86,13 +103,13 @@ export default function ItemList({
           Loading...
         </Text>
       )}
-      {!isLoading && hasNextPage && selectedIndex >= items.length - 3 && (
+      {!isLoading && hasNextPage && selectedIndex >= nodes.length - 3 && (
         <Text dimColor>Loading more...</Text>
       )}
-      {items.length > viewportHeight && (
+      {nodes.length > viewportHeight && (
         <Text dimColor>
-          {scrollOffset + 1}-{Math.min(scrollOffset + viewportHeight, items.length)} of{' '}
-          {items.length}
+          {scrollOffset + 1}-{Math.min(scrollOffset + viewportHeight, nodes.length)} of{' '}
+          {nodes.length}
           {hasNextPage ? '+' : ''}
         </Text>
       )}

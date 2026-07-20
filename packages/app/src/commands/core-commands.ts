@@ -11,11 +11,13 @@
 
 import { diffLines } from 'diff';
 import type { Command, CommandContext, Provider } from '@paramhub/types';
-import type { Action, DiffLine } from '../state/reducer.js';
+import type { Action, DiffLine, ListMode } from '../state/reducer.js';
 import type { Dispatch } from 'react';
 import type { EditOptions, EditResult } from '../editor/external.js';
 import { valueCache, valueCacheKey } from '../hooks/use-item-value.js';
-import { clearSearchCache } from '../hooks/use-search.js';
+import { clearListCache } from '../hooks/use-list.js';
+import { supportsBothModes, supportsHierarchy } from '../hooks/use-list-mode.js';
+import { saveListMode } from '../config/ui-state.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { conciseError } from '../utils/error.js';
 import { commandRegistry } from './registry.js';
@@ -30,6 +32,10 @@ export interface CoreCommandsOptions {
   runEditor: (initialValue: string, opts?: EditOptions) => Promise<EditResult | null>;
   /** Re-read the config file and apply theme/keybinding/editor settings. */
   reloadConfig: () => Promise<void>;
+  /** The user's current listing preference. */
+  getListMode: () => ListMode;
+  /** How deep the tree drill-in stack currently is (0 === at the root). */
+  getBranchDepth: () => number;
 }
 
 /** Build semantic +/- diff lines for the edit confirmation modal. */
@@ -57,8 +63,39 @@ function extensionForType(type: string): string {
  * Commands are functions of state (via context) that dispatch actions.
  */
 export function createCoreCommands(options: CoreCommandsOptions): Command[] {
-  const { dispatch, exit, getProvider, getProviders, setStatus, runEditor, reloadConfig } =
-    options;
+  const {
+    dispatch,
+    exit,
+    getProvider,
+    getProviders,
+    setStatus,
+    runEditor,
+    reloadConfig,
+    getListMode,
+    getBranchDepth,
+  } = options;
+
+  /** There is something to back out of: either a query, or a branch we drilled into. */
+  const canLeaveBranch = (ctx: CommandContext): boolean =>
+    getListMode() === 'tree' &&
+    supportsHierarchy(getProvider(ctx.activeProviderId)) &&
+    (getBranchDepth() > 0 || ctx.searchQuery.length > 0);
+
+  /**
+   * Back out one step.
+   *
+   * A query is cleared before the stack is popped, so escape never jumps two
+   * levels of context at once. Lives here rather than in the reducer so
+   * invoking the command from the palette behaves exactly like the hotkey.
+   */
+  const leaveBranch = (ctx: CommandContext): void => {
+    if (ctx.searchQuery.length > 0) {
+      dispatch({ type: 'CLEAR_SEARCH' });
+      dispatch({ type: 'SET_FOCUS', zone: 'list' });
+      return;
+    }
+    dispatch({ type: 'LEAVE_BRANCH' });
+  };
 
   return [
     // ── System ──
@@ -141,18 +178,87 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
     },
     {
       id: 'core:open-detail',
-      label: 'Open Detail',
-      description: 'Open the detail panel for the selected item',
+      label: 'Open',
+      description: 'Enter the selected branch, or open the detail panel for an item',
       category: 'navigation',
       hotkey: 'return',
-      isEnabled: (ctx: CommandContext) => ctx.selectedItem !== null,
+      isEnabled: (ctx: CommandContext) =>
+        ctx.selectedItem !== null || ctx.selectedNode?.kind === 'branch',
       isVisible: (ctx: CommandContext) => ctx.view === 'list',
       execute: (ctx: CommandContext) => {
+        // Enter doubles as drill-in: on a branch there is no detail to show.
+        if (ctx.selectedNode?.kind === 'branch') {
+          dispatch({ type: 'ENTER_BRANCH', branch: ctx.selectedNode });
+          return;
+        }
         if (ctx.selectedItem) {
           dispatch({ type: 'SET_SELECTED_ITEM', item: ctx.selectedItem });
           dispatch({ type: 'SET_VIEW', view: 'detail' });
           dispatch({ type: 'SET_FOCUS', zone: 'detail' });
         }
+      },
+    },
+    {
+      id: 'core:enter-branch',
+      label: 'Enter Branch',
+      description: 'Drill into the selected branch',
+      category: 'navigation',
+      hotkey: 'right',
+      isVisible: (ctx: CommandContext) => ctx.view === 'list',
+      isEnabled: (ctx: CommandContext) => ctx.selectedNode?.kind === 'branch',
+      execute: (ctx: CommandContext) => {
+        if (ctx.selectedNode?.kind === 'branch') {
+          dispatch({ type: 'ENTER_BRANCH', branch: ctx.selectedNode });
+        }
+      },
+    },
+    {
+      id: 'core:leave-branch',
+      label: 'Leave Branch',
+      description: 'Go up one level in the tree',
+      category: 'navigation',
+      hotkey: 'left',
+      isVisible: (ctx: CommandContext) => ctx.view === 'list' && canLeaveBranch(ctx),
+      execute: (ctx: CommandContext) => {
+        leaveBranch(ctx);
+      },
+    },
+    {
+      // A separate id rather than a second hotkey on core:leave-branch: the
+      // registry stores one hotkey per command, so a pair would be clobbered by
+      // keybinding overrides. Sharing 'escape' with core:back is safe — that one
+      // is visible only in detail view, and resolveByHotkey takes the first
+      // visible+enabled match.
+      id: 'core:leave-branch-esc',
+      label: 'Leave Branch (Esc)',
+      description: 'Clear the search query, or go up one level in the tree',
+      category: 'navigation',
+      hotkey: 'escape',
+      isVisible: (ctx: CommandContext) => ctx.view === 'list' && canLeaveBranch(ctx),
+      execute: (ctx: CommandContext) => {
+        leaveBranch(ctx);
+      },
+    },
+    {
+      id: 'core:toggle-tree-mode',
+      label: 'Toggle Tree / Flat',
+      description: 'Switch between browsing the hierarchy and a flat searchable list',
+      category: 'view',
+      hotkey: 't',
+      // Hidden rather than disabled on providers that only support one style.
+      isVisible: (ctx: CommandContext) =>
+        ctx.view === 'list' && supportsBothModes(getProvider(ctx.activeProviderId)),
+      execute: (ctx: CommandContext) => {
+        dispatch({ type: 'TOGGLE_LIST_MODE' });
+        // getListMode() still reads the pre-dispatch value here, so the new
+        // mode is its opposite.
+        const next: ListMode = getListMode() === 'tree' ? 'flat' : 'tree';
+        if (ctx.activeProviderId) {
+          // Fire and forget: remembering a preference must never block the UI
+          // or surface an error.
+          void saveListMode(ctx.activeProviderId, next);
+        }
+        setStatus(next === 'flat' ? 'Flat mode' : 'Tree mode');
       },
     },
     {
@@ -349,7 +455,7 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
                   await provider.updateValue!(item.id, newValue);
                   valueCache.set(valueCacheKey(provider.id, item.id), newValue);
                   dispatch({ type: 'LOAD_VALUE_SUCCESS', value: newValue });
-                  clearSearchCache();
+                  clearListCache();
                   dispatch({ type: 'REFRESH_LIST' });
                   setStatus('Saved');
                 } catch (err) {
@@ -405,7 +511,7 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
                 try {
                   await provider.deleteItem!(item.id);
                   valueCache.delete(valueCacheKey(provider.id, item.id));
-                  clearSearchCache();
+                  clearListCache();
                   dispatch({ type: 'SET_VIEW', view: 'list' });
                   dispatch({ type: 'SET_SELECTED_ITEM', item: null });
                   dispatch({ type: 'SET_FOCUS', zone: 'list' });

@@ -8,14 +8,36 @@
 import { createContext, useContext, useReducer } from 'react';
 import type { Dispatch } from 'react';
 import { appReducer, initialState } from './reducer.js';
-import type { AppState, Action } from './reducer.js';
+import type { AppState, Action, ListMode } from './reducer.js';
 
 const AppStateContext = createContext<AppState | null>(null);
 const AppDispatchContext = createContext<Dispatch<Action> | null>(null);
 
-/** Provider component that wraps the app with state management. */
-export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+interface AppStateProviderProps {
+  children: React.ReactNode;
+  /** Fallback listing preference from config (`list.defaultMode`). */
+  initialListMode?: ListMode;
+  /** Per-provider listing preferences restored from the UI state file. */
+  initialListModes?: Record<string, ListMode>;
+}
+
+/**
+ * Provider component that wraps the app with state management.
+ *
+ * Preferences are seeded into the initial state rather than dispatched from an
+ * effect, so the very first list fetch already runs in the remembered mode —
+ * an effect would make the app flash the wrong mode before correcting itself.
+ */
+export function AppStateProvider({
+  children,
+  initialListMode,
+  initialListModes,
+}: AppStateProviderProps) {
+  const [state, dispatch] = useReducer(appReducer, initialState, (base) => ({
+    ...base,
+    defaultListMode: initialListMode ?? base.defaultListMode,
+    listModes: initialListModes ?? base.listModes,
+  }));
 
   return (
     <AppStateContext.Provider value={state}>

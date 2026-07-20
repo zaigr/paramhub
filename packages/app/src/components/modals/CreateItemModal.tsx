@@ -16,7 +16,7 @@ import type { ItemType } from '@paramhub/types';
 import { useAppState, useAppDispatch } from '../../state/index.js';
 import { useStatus } from '../../hooks/use-status.js';
 import { useEditorContext } from '../../hooks/use-editor.js';
-import { clearSearchCache } from '../../hooks/use-search.js';
+import { clearListCache } from '../../hooks/use-list.js';
 import { conciseError } from '../../utils/error.js';
 import { useTheme } from '../../theme/index.js';
 import { isEnterKey } from '../../utils/keys.js';
@@ -75,7 +75,7 @@ export default function CreateItemModal() {
             onConfirm: async () => {
               try {
                 await provider.createItem!(path, value, type);
-                clearSearchCache();
+                clearListCache();
                 dispatch({ type: 'REFRESH_LIST' });
                 setStatus(`Created ${path}`);
               } catch (err) {

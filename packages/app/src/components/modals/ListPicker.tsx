@@ -14,7 +14,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Provider } from '@paramhub/types';
 import { useAppState, useAppDispatch } from '../../state/index.js';
-import { clearSearchCache } from '../../hooks/use-search.js';
+import { clearListCache } from '../../hooks/use-list.js';
 import { valueCache } from '../../hooks/use-item-value.js';
 import { conciseError } from '../../utils/error.js';
 import { useTheme } from '../../theme/index.js';
@@ -120,7 +120,7 @@ export default function ListPicker({ kind }: { kind: PickerKind }) {
       // profile/region can't leak into the new context.
       const refresh = (ctx: Awaited<ReturnType<Provider['getCurrentContext']>>) => {
         dispatch({ type: 'SET_PROVIDER_CONTEXT', providerId: provider.id, context: ctx });
-        clearSearchCache();
+        clearListCache();
         valueCache.clear();
         dispatch({ type: 'CLEAR_SEARCH' });
       };
