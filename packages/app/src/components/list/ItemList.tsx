@@ -8,6 +8,7 @@
 
 import { Box, Text, useStdout } from 'ink';
 import type { Item } from '@paramhub/types';
+import { useTheme } from '../../theme/index.js';
 import ItemRow from './ItemRow.js';
 
 interface ItemListProps {
@@ -36,6 +37,7 @@ export default function ItemList({
   onLoadNextPage,
 }: ItemListProps) {
   const { stdout } = useStdout();
+  const { theme } = useTheme();
   const terminalRows = stdout?.rows ?? 24;
   const viewportHeight = Math.max(5, terminalRows - CHROME_ROWS);
 
@@ -80,7 +82,7 @@ export default function ItemList({
         );
       })}
       {isLoading && (
-        <Text color="yellow" dimColor>
+        <Text color={theme.warning} dimColor>
           Loading...
         </Text>
       )}

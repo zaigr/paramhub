@@ -86,3 +86,10 @@ for structural verification.
 - Timing is sleep-based; bump `--wait` if async data (e.g. value loading) hasn't
   settled in the captured frame.
 - Verifies structure, not exact colors.
+- **Keystroke input can be unreliable in sandboxed sessions**: verified with a
+  minimal Ink `useInput` app — all `--key` bytes may be buffered and delivered
+  as ONE merged chunk only when the expect script ends, with `\r` translated
+  to `\n`. Static frames (`--wait` only) always work; a single key sometimes
+  applies at flush; multi-step key sequences never advance. To drive flows
+  (wizard steps, palette + Enter), use `ink-testing-library` tests in
+  `packages/app/tests/` instead.

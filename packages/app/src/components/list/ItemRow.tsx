@@ -7,6 +7,7 @@
 
 import { Box, Text } from 'ink';
 import type { Item } from '@paramhub/types';
+import { useTheme } from '../../theme/index.js';
 
 interface ItemRowProps {
   item: Item;
@@ -14,17 +15,18 @@ interface ItemRowProps {
 }
 
 export default function ItemRow({ item, isSelected }: ItemRowProps) {
+  const { theme } = useTheme();
   return (
     <Box width="100%" justifyContent="space-between">
       <Box>
-        <Text color={isSelected ? 'cyan' : undefined} bold={isSelected}>
+        <Text color={isSelected ? theme.accent : undefined} bold={isSelected}>
           {isSelected ? '> ' : '  '}
         </Text>
-        <Text color={isSelected ? 'cyan' : undefined} dimColor={!isSelected}>
+        <Text color={isSelected ? theme.accent : undefined} dimColor={!isSelected}>
           {item.path}
         </Text>
       </Box>
-      <Text color={item.type === 'secure' ? 'yellow' : 'gray'} dimColor={!isSelected}>
+      <Text color={item.type === 'secure' ? theme.secure : theme.muted} dimColor={!isSelected}>
         [{item.type}]
       </Text>
     </Box>

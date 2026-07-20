@@ -17,6 +17,9 @@ import { useAppState, useAppDispatch } from '../../state/index.js';
 import { clearSearchCache } from '../../hooks/use-search.js';
 import { valueCache } from '../../hooks/use-item-value.js';
 import { conciseError } from '../../utils/error.js';
+import { useTheme } from '../../theme/index.js';
+import { isEnterKey } from '../../utils/keys.js';
+import SelectList from '../common/SelectList.js';
 import Modal from './Modal.js';
 
 /** Maximum number of options to display at once. */
@@ -53,6 +56,7 @@ export default function ListPicker({ kind }: { kind: PickerKind }) {
 
   const state = useAppState();
   const dispatch = useAppDispatch();
+  const { theme } = useTheme();
 
   const provider = state.activeProviderId
     ? state.providers.get(state.activeProviderId) ?? null
@@ -148,7 +152,7 @@ export default function ListPicker({ kind }: { kind: PickerKind }) {
       close();
       return;
     }
-    if (key.return) {
+    if (isEnterKey(input, key)) {
       const value = results[clampedIndex];
       if (value) selectValue(value);
       return;
@@ -174,40 +178,30 @@ export default function ListPicker({ kind }: { kind: PickerKind }) {
     }
   });
 
-  const startIndex = Math.max(
-    0,
-    Math.min(clampedIndex - Math.floor(MAX_VISIBLE_RESULTS / 2), results.length - MAX_VISIBLE_RESULTS),
-  );
-  const visibleResults = results.slice(startIndex, startIndex + MAX_VISIBLE_RESULTS);
-
   return (
     <Modal title={spec.title} width={56}>
       <Box>
-        <Text color="gray">&gt; </Text>
+        <Text color={theme.muted}>&gt; </Text>
         <Text>{query}</Text>
         <Text dimColor>{query.length === 0 ? 'Type to filter...' : ''}</Text>
       </Box>
       <Box flexDirection="column">
         {error ? (
-          <Text color="red">  {error}</Text>
+          <Text color={theme.error}>  {error}</Text>
         ) : options === null ? (
           <Text dimColor>  Loading…</Text>
-        ) : visibleResults.length === 0 ? (
+        ) : results.length === 0 ? (
           <Text dimColor>  No matches</Text>
         ) : (
-          visibleResults.map((value, i) => {
-            const actualIndex = startIndex + i;
-            const isSelected = actualIndex === clampedIndex;
-            const isCurrent = value === currentValue;
-            const prefix = isSelected ? '> ' : '  ';
-            return (
-              <Text key={value} color={isSelected ? 'cyan' : undefined} bold={isSelected}>
-                {prefix}
-                {value}
-                {isCurrent ? <Text dimColor> (current)</Text> : ''}
-              </Text>
-            );
-          })
+          <SelectList
+            options={results.map((value) => ({
+              label: value,
+              value,
+              hint: value === currentValue ? '(current)' : undefined,
+            }))}
+            selectedIndex={clampedIndex}
+            maxVisible={MAX_VISIBLE_RESULTS}
+          />
         )}
       </Box>
       <Box>

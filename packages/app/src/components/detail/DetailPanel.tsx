@@ -10,6 +10,7 @@ import { Box, Text, useStdout } from 'ink';
 import type { Provider } from '@paramhub/types';
 import { useAppState, useAppDispatch } from '../../state/index.js';
 import { useItemValue } from '../../hooks/use-item-value.js';
+import { useTheme } from '../../theme/index.js';
 import ValuePreview from './ValuePreview.js';
 
 const MASK = '••••••••';
@@ -30,6 +31,7 @@ export default function DetailPanel({ provider }: DetailPanelProps) {
   const { selectedItem, revealedValue, statusMessage } = useAppState();
   const dispatch = useAppDispatch();
   const { stdout } = useStdout();
+  const { theme } = useTheme();
 
   useItemValue({ provider, item: selectedItem, dispatch });
 
@@ -62,10 +64,10 @@ export default function DetailPanel({ provider }: DetailPanelProps) {
       flexDirection="column"
       flexGrow={1}
       borderStyle="round"
-      borderColor="gray"
+      borderColor={theme.border}
       paddingX={1}
     >
-      <Text bold color="cyan">
+      <Text bold color={theme.accent}>
         {selectedItem.path}
       </Text>
 
@@ -86,7 +88,7 @@ export default function DetailPanel({ provider }: DetailPanelProps) {
 
       <Box marginTop={1}>
         {statusMessage ? (
-          <Text color="green">{statusMessage}</Text>
+          <Text color={theme.success}>{statusMessage}</Text>
         ) : (
           <Text dimColor>{hint}</Text>
         )}

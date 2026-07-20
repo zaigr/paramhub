@@ -12,6 +12,8 @@
 import { Box, Text, useInput } from 'ink';
 import { useAppState, useAppDispatch } from '../../state/index.js';
 import type { ConfirmModalData } from '../../state/index.js';
+import { useTheme } from '../../theme/index.js';
+import { isEnterKey } from '../../utils/keys.js';
 import Modal from './Modal.js';
 
 /** Cap on how many diff/preview lines to render before truncating. */
@@ -20,14 +22,18 @@ const MAX_LINES = 16;
 export default function ConfirmDialog() {
   const state = useAppState();
   const dispatch = useAppDispatch();
+  const { theme } = useTheme();
   const data = state.modal?.data as ConfirmModalData | undefined;
+
+  const kindColor = (kind?: 'added' | 'removed') =>
+    kind === 'added' ? theme.diffAdded : kind === 'removed' ? theme.diffRemoved : undefined;
 
   useInput((input, key) => {
     if (key.escape || input === 'n' || input === 'N') {
       dispatch({ type: 'CLOSE_MODAL' });
       return;
     }
-    if (key.return || input === 'y' || input === 'Y') {
+    if (isEnterKey(input, key) || input === 'y' || input === 'Y') {
       dispatch({ type: 'CLOSE_MODAL' });
       const result = data?.onConfirm();
       if (result instanceof Promise) {
@@ -55,7 +61,7 @@ export default function ConfirmDialog() {
       {visible.length > 0 && (
         <Box flexDirection="column" marginTop={data.body ? 1 : 0}>
           {visible.map((line, i) => (
-            <Text key={i} color={line.color}>
+            <Text key={i} color={kindColor(line.kind)}>
               {line.text}
             </Text>
           ))}

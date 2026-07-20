@@ -25,12 +25,18 @@ class CommandRegistry {
   private commands: Map<string, RegisteredCommand> = new Map();
   private fuse: Fuse<RegisteredCommand> | null = null;
   private dirty = true;
+  /**
+   * User keybinding overrides (commandId → hotkey). Stored on the registry so
+   * commands registered later (provider commands on tab switch) still get
+   * their override applied.
+   */
+  private overrides: Map<string, string> = new Map();
 
   /** Register a command. Replaces existing command with same ID. */
   register(command: Command): void {
     this.commands.set(command.id, {
       command,
-      hotkey: command.hotkey,
+      hotkey: this.overrides.get(command.id) ?? command.hotkey,
     });
     this.dirty = true;
   }
@@ -78,6 +84,18 @@ class CommandRegistry {
     const entry = this.commands.get(id);
     if (entry) {
       entry.hotkey = hotkey;
+    }
+  }
+
+  /**
+   * Replace the keybinding override map. Overrides apply to already-registered
+   * commands immediately and to any command registered afterwards. Commands
+   * whose previous override was removed revert to their default hotkey.
+   */
+  setOverrides(overrides: Record<string, string>): void {
+    this.overrides = new Map(Object.entries(overrides));
+    for (const [id, entry] of this.commands) {
+      entry.hotkey = this.overrides.get(id) ?? entry.command.hotkey;
     }
   }
 
@@ -136,7 +154,11 @@ class CommandRegistry {
     return this.getAll().filter((cmd) => cmd.category === category);
   }
 
-  /** Clear all commands from the registry. */
+  /**
+   * Clear all commands from the registry. Keybinding overrides are kept —
+   * clear() runs in React effect cleanup between re-registrations, and the
+   * overrides must survive that churn.
+   */
   clear(): void {
     this.commands.clear();
     this.fuse = null;

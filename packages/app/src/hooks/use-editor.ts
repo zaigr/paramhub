@@ -20,7 +20,7 @@
  * gracefully instead of corrupting the terminal.
  */
 
-import { useCallback, createContext, useContext, createElement } from 'react';
+import { useCallback, useRef, createContext, useContext, createElement } from 'react';
 import type { ReactNode } from 'react';
 import { useStdin, useStdout } from 'ink';
 import { editValueInEditor, editValueInEditorAsync, resolveEditor, isGuiEditor } from '../editor/external.js';
@@ -41,11 +41,18 @@ export function useEditor(defaults: EditOptions = {}): UseEditorReturn {
   const { stdout } = useStdout();
   const dispatch = useAppDispatch();
 
+  // Config is React state (setup wizard / reload-config can change it after
+  // mount), so the latest defaults are read through a ref: runEditor keeps a
+  // stable identity (no command re-registration churn) but never uses a stale
+  // editor command.
+  const defaultsRef = useRef(defaults);
+  defaultsRef.current = defaults;
+
   const runEditor = useCallback(
     async (initialValue: string, opts: EditOptions = {}): Promise<EditResult | null> => {
       if (!isRawModeSupported) return null;
 
-      const merged = { ...defaults, ...opts };
+      const merged = { ...defaultsRef.current, ...opts };
       const gui = isGuiEditor(resolveEditor(merged.editorCommand), merged.gui);
 
       // Pause Ink's input either way so keystrokes go to the editor, not the TUI.
@@ -77,8 +84,6 @@ export function useEditor(defaults: EditOptions = {}): UseEditorReturn {
         setRawMode(true);
       }
     },
-    // Note: `defaults` is a config-derived object, stable for the app's
-    // lifetime, so it is intentionally not in the dependency list.
     [stdin, setRawMode, isRawModeSupported, stdout, dispatch],
   );
 

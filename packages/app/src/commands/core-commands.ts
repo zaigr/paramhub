@@ -28,18 +28,20 @@ export interface CoreCommandsOptions {
   setStatus: (message: string) => void;
   /** Suspend Ink and edit a value in the external editor. */
   runEditor: (initialValue: string, opts?: EditOptions) => Promise<EditResult | null>;
+  /** Re-read the config file and apply theme/keybinding/editor settings. */
+  reloadConfig: () => Promise<void>;
 }
 
-/** Build colored +/- diff lines for the edit confirmation modal. */
+/** Build semantic +/- diff lines for the edit confirmation modal. */
 function buildDiffLines(oldValue: string, newValue: string): DiffLine[] {
   const lines: DiffLine[] = [];
   for (const part of diffLines(oldValue, newValue)) {
     const prefix = part.added ? '+' : part.removed ? '-' : ' ';
-    const color = part.added ? 'green' : part.removed ? 'red' : undefined;
+    const kind = part.added ? ('added' as const) : part.removed ? ('removed' as const) : undefined;
     // diffLines chunks end with a trailing newline; drop the empty tail split.
     const body = part.value.replace(/\n$/, '');
     for (const line of body.split('\n')) {
-      lines.push({ text: `${prefix} ${line}`, color });
+      lines.push({ text: `${prefix} ${line}`, kind });
     }
   }
   return lines;
@@ -55,7 +57,8 @@ function extensionForType(type: string): string {
  * Commands are functions of state (via context) that dispatch actions.
  */
 export function createCoreCommands(options: CoreCommandsOptions): Command[] {
-  const { dispatch, exit, getProvider, getProviders, setStatus, runEditor } = options;
+  const { dispatch, exit, getProvider, getProviders, setStatus, runEditor, reloadConfig } =
+    options;
 
   return [
     // ── System ──
@@ -77,6 +80,39 @@ export function createCoreCommands(options: CoreCommandsOptions): Command[] {
       hotkey: 'ctrl+p',
       execute: (_ctx: CommandContext) => {
         dispatch({ type: 'OPEN_MODAL', modal: { type: 'command-palette' } });
+      },
+    },
+    {
+      id: 'core:show-help',
+      label: 'Help',
+      description: 'Show all commands and their keybindings',
+      category: 'system',
+      hotkey: '?',
+      execute: () => {
+        dispatch({ type: 'OPEN_MODAL', modal: { type: 'help' } });
+      },
+    },
+    {
+      id: 'core:reload-config',
+      label: 'Reload Config',
+      description: 'Re-read the config file and apply theme/keybinding changes',
+      category: 'system',
+      execute: async () => {
+        try {
+          await reloadConfig();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Reload failed';
+          dispatch({ type: 'SET_ERROR', error: `Config reload failed: ${conciseError(message)}` });
+        }
+      },
+    },
+    {
+      id: 'core:setup-wizard',
+      label: 'Run Setup Wizard',
+      description: 'Pick theme, provider, and editor; writes the config file',
+      category: 'system',
+      execute: () => {
+        dispatch({ type: 'OPEN_MODAL', modal: { type: 'setup-wizard' } });
       },
     },
 

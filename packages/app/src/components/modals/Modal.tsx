@@ -13,6 +13,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, measureElement, type DOMElement } from 'ink';
+import { useTheme } from '../../theme/index.js';
 
 interface ModalProps {
   title: string;
@@ -24,6 +25,7 @@ interface ModalProps {
 export default function Modal({ title, width = 60, children }: ModalProps) {
   const contentRef = useRef<DOMElement>(null);
   const [contentHeight, setContentHeight] = useState(0);
+  const { theme } = useTheme();
 
   // Frame is sized to the measured content; guard against a re-render loop.
   useEffect(() => {
@@ -43,13 +45,13 @@ export default function Modal({ title, width = 60, children }: ModalProps) {
     <Box flexDirection="column" width={width} position="relative">
       {contentHeight > 0 && (
         <Box position="absolute" flexDirection="column">
-          <Text color="cyan">{topBorder}</Text>
+          <Text color={theme.accent}>{topBorder}</Text>
           {Array.from({ length: contentHeight }).map((_, i) => (
-            <Text key={i} color="cyan">
+            <Text key={i} color={theme.accent}>
               {fillRow}
             </Text>
           ))}
-          <Text color="cyan">{bottomBorder}</Text>
+          <Text color={theme.accent}>{bottomBorder}</Text>
         </Box>
       )}
 
@@ -64,7 +66,7 @@ export default function Modal({ title, width = 60, children }: ModalProps) {
         paddingRight={1}
       >
         <Box justifyContent="center">
-          <Text bold color="cyan">
+          <Text bold color={theme.accent}>
             {title}
           </Text>
         </Box>

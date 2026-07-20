@@ -18,6 +18,8 @@ import { useStatus } from '../../hooks/use-status.js';
 import { useEditorContext } from '../../hooks/use-editor.js';
 import { clearSearchCache } from '../../hooks/use-search.js';
 import { conciseError } from '../../utils/error.js';
+import { useTheme } from '../../theme/index.js';
+import { isEnterKey } from '../../utils/keys.js';
 import Modal from './Modal.js';
 
 type Step = 'path' | 'type';
@@ -31,6 +33,7 @@ export default function CreateItemModal() {
   const dispatch = useAppDispatch();
   const { setStatus } = useStatus();
   const { runEditor } = useEditorContext();
+  const { theme } = useTheme();
 
   const provider = state.activeProviderId
     ? state.providers.get(state.activeProviderId) ?? null
@@ -57,7 +60,7 @@ export default function CreateItemModal() {
       const value = result.value;
       const lines =
         value.length > 0
-          ? value.split('\n').map((l) => ({ text: `+ ${l}`, color: 'green' }))
+          ? value.split('\n').map((l) => ({ text: `+ ${l}`, kind: 'added' as const }))
           : [{ text: '(empty value)' }];
 
       dispatch({
@@ -93,7 +96,7 @@ export default function CreateItemModal() {
     }
 
     if (step === 'path') {
-      if (key.return) {
+      if (isEnterKey(input, key)) {
         if (pathValue.trim().length > 0) setStep('type');
         return;
       }
@@ -103,12 +106,13 @@ export default function CreateItemModal() {
       }
       if (key.ctrl || key.meta) return;
       if (key.tab || key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) return;
-      if (input && input.length === 1) setPathValue((p) => p + input);
+      // Accept multi-char input too (paste / batched delivery)
+      if (input) setPathValue((p) => p + input);
       return;
     }
 
     // type step
-    if (key.return) {
+    if (isEnterKey(input, key)) {
       submit(pathValue.trim(), types[typeIndex] ?? types[0]!);
       return;
     }
@@ -130,9 +134,9 @@ export default function CreateItemModal() {
     <Modal title="Create Parameter" width={64}>
       <Box>
         <Text dimColor>Path: </Text>
-        <Text color={step === 'path' ? 'white' : undefined}>{pathValue}</Text>
+        <Text color={step === 'path' ? theme.inputText : undefined}>{pathValue}</Text>
         {step === 'path' && (
-          <Text color="cyan" bold>
+          <Text color={theme.accent} bold>
             _
           </Text>
         )}
@@ -144,7 +148,7 @@ export default function CreateItemModal() {
           {types.map((t, i) => {
             const isSelected = i === typeIndex;
             return (
-              <Text key={t} color={isSelected ? 'cyan' : undefined} bold={isSelected}>
+              <Text key={t} color={isSelected ? theme.accent : undefined} bold={isSelected}>
                 {isSelected ? '> ' : '  '}
                 {t}
               </Text>
