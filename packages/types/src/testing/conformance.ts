@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { Provider, ProviderFactory } from '../index.js';
+import type { Item, Provider, ProviderFactory } from '../index.js';
 
 /**
  * Runs the full provider conformance test suite against a provider factory.
@@ -36,6 +36,59 @@ export function runProviderConformanceTests(
 
     afterAll(async () => {
       await provider.dispose();
+    });
+
+    // Probed inside each test rather than at describe level: capabilities are
+    // only readable after init, which happens in beforeAll — i.e. *after* every
+    // describe body has already run.
+    const searchable = (): boolean =>
+      Boolean(provider.getCapabilities().canSearch && provider.search);
+    const browsable = (): boolean =>
+      Boolean(provider.getCapabilities().hierarchy && provider.browse);
+
+    /** Any one item — browse-only providers have no `search()` to pull one from. */
+    async function anyItem(): Promise<Item | undefined> {
+      if (provider.search) {
+        const result = await provider.search({ query: '', maxResults: 1 });
+        if (result.items[0]) {
+          return result.items[0];
+        }
+      }
+      if (!provider.browse) {
+        return undefined;
+      }
+      let path = provider.getCapabilities().hierarchy?.rootPath;
+      // Bounded so a provider returning branches forever cannot hang the suite.
+      for (let depth = 0; depth < 16; depth++) {
+        const result = await provider.browse({ path });
+        const leaf = result.nodes.find((node) => node.kind === 'leaf');
+        if (leaf?.kind === 'leaf') {
+          return leaf.item;
+        }
+        const branch = result.nodes.find((node) => node.kind === 'branch');
+        if (branch?.kind !== 'branch') {
+          return undefined;
+        }
+        path = branch.path;
+      }
+      return undefined;
+    }
+
+    // ── Listing contract ──
+
+    describe('Listing', () => {
+      it('should implement search, browse, or both', () => {
+        expect(Boolean(provider.search) || Boolean(provider.browse)).toBe(true);
+      });
+
+      it('should declare canSearch consistently with search()', () => {
+        expect(provider.getCapabilities().canSearch).toBe(Boolean(provider.search));
+      });
+
+      it('should declare hierarchy consistently with browse()', () => {
+        const hasHierarchy = provider.getCapabilities().hierarchy !== undefined;
+        expect(hasHierarchy).toBe(Boolean(provider.browse));
+      });
     });
 
     // ── Identity ──
@@ -194,13 +247,15 @@ export function runProviderConformanceTests(
 
     describe('Search', () => {
       it('should return a valid search result for empty query', async () => {
-        const result = await provider.search({ query: '' });
+        if (!searchable()) return;
+        const result = await provider.search!({ query: '' });
         expect(result).toBeDefined();
         expect(Array.isArray(result.items)).toBe(true);
       });
 
       it('should return items with required fields', async () => {
-        const result = await provider.search({ query: '' });
+        if (!searchable()) return;
+        const result = await provider.search!({ query: '' });
         for (const item of result.items) {
           expect(item.id).toBeDefined();
           expect(typeof item.id).toBe('string');
@@ -222,24 +277,27 @@ export function runProviderConformanceTests(
       });
 
       it('should not include values in search results', async () => {
-        const result = await provider.search({ query: '' });
+        if (!searchable()) return;
+        const result = await provider.search!({ query: '' });
         for (const item of result.items) {
           expect(item.value).toBeUndefined();
         }
       });
 
       it('should respect maxResults', async () => {
-        const result = await provider.search({ query: '', maxResults: 2 });
+        if (!searchable()) return;
+        const result = await provider.search!({ query: '', maxResults: 2 });
         expect(result.items.length).toBeLessThanOrEqual(2);
       });
 
       it('should support pagination', async () => {
+        if (!searchable()) return;
         // Get first page
-        const page1 = await provider.search({ query: '', maxResults: 3 });
+        const page1 = await provider.search!({ query: '', maxResults: 3 });
 
         if (page1.nextToken) {
           // Get second page
-          const page2 = await provider.search({
+          const page2 = await provider.search!({
             query: '',
             maxResults: 3,
             nextToken: page1.nextToken,
@@ -255,12 +313,13 @@ export function runProviderConformanceTests(
       });
 
       it('should filter results based on query', async () => {
+        if (!searchable()) return;
         // Search for something specific
-        const allResult = await provider.search({ query: '' });
+        const allResult = await provider.search!({ query: '' });
         if (allResult.items.length > 0) {
           // Use the name of the first item as a query
           const targetName = allResult.items[0]!.name;
-          const filtered = await provider.search({ query: targetName });
+          const filtered = await provider.search!({ query: targetName });
           expect(filtered.items.length).toBeGreaterThan(0);
           // All results should match the query
           for (const item of filtered.items) {
@@ -273,19 +332,110 @@ export function runProviderConformanceTests(
       });
     });
 
+    // ── Browse ──
+
+    describe('Browse', () => {
+      it('should describe a usable hierarchy', () => {
+        if (!browsable()) return;
+        const hierarchy = provider.getCapabilities().hierarchy!;
+        expect(typeof hierarchy.delimiter).toBe('string');
+        expect(hierarchy.delimiter.length).toBeGreaterThan(0);
+        expect(typeof hierarchy.rootPath).toBe('string');
+      });
+
+      it('should return valid nodes at the root', async () => {
+        if (!browsable()) return;
+        const result = await provider.browse!({});
+        expect(Array.isArray(result.nodes)).toBe(true);
+
+        for (const node of result.nodes) {
+          expect(['branch', 'leaf']).toContain(node.kind);
+          if (node.kind === 'branch') {
+            expect(typeof node.path).toBe('string');
+            expect(node.path.length).toBeGreaterThan(0);
+            expect(typeof node.name).toBe('string');
+            expect(node.name.length).toBeGreaterThan(0);
+          } else {
+            const { item } = node;
+            expect(typeof item.id).toBe('string');
+            expect(typeof item.path).toBe('string');
+            expect(typeof item.name).toBe('string');
+            expect(['string', 'secure', 'binary', 'json', 'list']).toContain(item.type);
+            expect(typeof item.metadata).toBe('object');
+            expect(item.value).toBeUndefined();
+          }
+        }
+      });
+
+      it('should accept a branch path back verbatim', async () => {
+        if (!browsable()) return;
+        const root = await provider.browse!({});
+        const branch = root.nodes.find((node) => node.kind === 'branch');
+        if (branch?.kind !== 'branch') return;
+
+        // Normalizing the path (trailing delimiter, leading slash) is the
+        // classic way to break BranchNode.path's round-trip contract.
+        const child = await provider.browse!({ path: branch.path });
+        expect(Array.isArray(child.nodes)).toBe(true);
+      });
+
+      it('should return direct children only, never descendants', async () => {
+        if (!browsable()) return;
+        const { delimiter } = provider.getCapabilities().hierarchy!;
+        const root = await provider.browse!({});
+        const branch = root.nodes.find((node) => node.kind === 'branch');
+        if (branch?.kind !== 'branch') return;
+
+        const child = await provider.browse!({ path: branch.path });
+        for (const node of child.nodes) {
+          if (node.kind !== 'leaf') continue;
+          const rest = node.item.path.slice(branch.path.length);
+          // Allow one leading delimiter when the branch path is not itself
+          // delimiter-terminated; anything beyond that means a deeper level leaked.
+          const tail = rest.startsWith(delimiter) ? rest.slice(delimiter.length) : rest;
+          expect(tail.includes(delimiter)).toBe(false);
+        }
+      });
+
+      it('should respect maxResults', async () => {
+        if (!browsable()) return;
+        const result = await provider.browse!({ maxResults: 2 });
+        expect(result.nodes.length).toBeLessThanOrEqual(2);
+      });
+
+      it('should support pagination', async () => {
+        if (!browsable()) return;
+        const page1 = await provider.browse!({ maxResults: 2 });
+        if (!page1.nextToken) return;
+
+        const page2 = await provider.browse!({
+          maxResults: 2,
+          nextToken: page1.nextToken,
+        });
+        expect(Array.isArray(page2.nodes)).toBe(true);
+
+        const seen = new Set(
+          page1.nodes.map((node) => (node.kind === 'branch' ? node.path : node.item.id)),
+        );
+        for (const node of page2.nodes) {
+          const key = node.kind === 'branch' ? node.path : node.item.id;
+          expect(seen.has(key)).toBe(false);
+        }
+      });
+    });
+
     // ── Get Item & Value ──
 
     describe('Get Item & Value', () => {
       it('should get a single item by ID', async () => {
-        const searchResult = await provider.search({ query: '', maxResults: 1 });
-        if (searchResult.items.length > 0) {
-          const firstItem = searchResult.items[0]!;
-          const item = await provider.getItem(firstItem.id);
+        const known = await anyItem();
+        if (known) {
+          const item = await provider.getItem(known.id);
           expect(item).toBeDefined();
-          expect(item.id).toBe(firstItem.id);
-          expect(item.path).toBe(firstItem.path);
-          expect(item.name).toBe(firstItem.name);
-          expect(item.type).toBe(firstItem.type);
+          expect(item.id).toBe(known.id);
+          expect(item.path).toBe(known.path);
+          expect(item.name).toBe(known.name);
+          expect(item.type).toBe(known.type);
         }
       });
 
@@ -296,10 +446,9 @@ export function runProviderConformanceTests(
       });
 
       it('should get a value by ID', async () => {
-        const searchResult = await provider.search({ query: '', maxResults: 1 });
-        if (searchResult.items.length > 0) {
-          const firstItem = searchResult.items[0]!;
-          const value = await provider.getValue(firstItem.id);
+        const known = await anyItem();
+        if (known) {
+          const value = await provider.getValue(known.id);
           expect(value).toBeDefined();
           expect(typeof value).toBe('string');
         }
@@ -316,9 +465,9 @@ export function runProviderConformanceTests(
 
     describe('Item Details', () => {
       it('should return detail fields for an item', async () => {
-        const searchResult = await provider.search({ query: '', maxResults: 1 });
-        if (searchResult.items.length > 0) {
-          const item = await provider.getItem(searchResult.items[0]!.id);
+        const known = await anyItem();
+        if (known) {
+          const item = await provider.getItem(known.id);
           const details = provider.getItemDetails(item);
           expect(Array.isArray(details)).toBe(true);
           expect(details.length).toBeGreaterThan(0);

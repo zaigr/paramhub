@@ -8,7 +8,12 @@ import type { Item } from './items.js';
 export interface SearchOptions {
   /** The search query string (matched against paths/names). */
   query: string;
-  /** Optional path prefix to scope the search. */
+  /**
+   * Optional path prefix to scope the search to one subtree.
+   *
+   * A branch path exactly as produced by `provider.browse()`. The search is
+   * recursive — every descendant is eligible, not just direct children.
+   */
   pathPrefix?: string;
   /** Maximum number of results to return per page. */
   maxResults?: number;

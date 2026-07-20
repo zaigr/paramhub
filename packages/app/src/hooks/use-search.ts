@@ -75,9 +75,17 @@ export function useSearch({ provider, state, dispatch }: UseSearchOptions): UseS
         return;
       }
 
+      // search() is optional on the contract — browse-only providers have no
+      // server-side name search. Until the list can drive provider.browse(),
+      // such a provider renders as empty rather than throwing.
+      if (!provider?.search) {
+        dispatch({ type: 'SEARCH_SUCCESS', items: [], nextToken: undefined, append: false });
+        return;
+      }
+
       dispatch({ type: 'SEARCH_START', query });
 
-      provider!
+      provider
         .search({ query, maxResults: 20, nextToken })
         .then((result) => {
           if (requestId !== requestIdRef.current) return;

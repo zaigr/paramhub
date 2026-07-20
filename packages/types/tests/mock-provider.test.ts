@@ -53,6 +53,68 @@ describe('MockProvider — Specific Behavior', () => {
     }
   });
 
+  it('should browse the root level without leaking descendants', async () => {
+    const provider = new MockProvider();
+    await provider.init({});
+
+    const root = await provider.browse({});
+    expect(root.nodes.map((n) => n.kind === 'branch' && n.path).sort()).toEqual([
+      '/app',
+      '/shared',
+    ]);
+  });
+
+  it('should descend a branch path returned by browse', async () => {
+    const provider = new MockProvider();
+    await provider.init({});
+
+    const root = await provider.browse({});
+    const app = root.nodes.find((n) => n.kind === 'branch' && n.path === '/app');
+    expect(app?.kind).toBe('branch');
+
+    const level1 = await provider.browse({ path: (app as { path: string }).path });
+    expect(level1.nodes.map((n) => n.kind === 'branch' && n.path).sort()).toEqual([
+      '/app/production',
+      '/app/staging',
+    ]);
+  });
+
+  it('should mix branches and leaves at a level that has both', async () => {
+    const provider = new MockProvider();
+    await provider.init({});
+
+    const result = await provider.browse({ path: '/app/staging' });
+    const branches = result.nodes.filter((n) => n.kind === 'branch');
+    const leaves = result.nodes.filter((n) => n.kind === 'leaf');
+
+    expect(branches.map((n) => (n as { path: string }).path)).toEqual([
+      '/app/staging/database',
+    ]);
+    expect(leaves.map((n) => (n as { item: { path: string } }).item.path)).toEqual([
+      '/app/staging/feature-flags',
+    ]);
+    for (const leaf of leaves) {
+      expect((leaf as { item: { value?: string } }).item.value).toBeUndefined();
+    }
+  });
+
+  it('should paginate browse results', async () => {
+    const provider = new MockProvider();
+    await provider.init({});
+
+    const page1 = await provider.browse({ path: '/app/production/database', maxResults: 2 });
+    expect(page1.nodes.length).toBe(2);
+    expect(page1.nextToken).toBeDefined();
+
+    const page2 = await provider.browse({
+      path: '/app/production/database',
+      maxResults: 2,
+      nextToken: page1.nextToken,
+    });
+    expect(page2.nodes.length).toBe(1);
+    expect(page2.nextToken).toBeUndefined();
+  });
+
   it('should return 3 commands', async () => {
     const provider = new MockProvider();
     await provider.init({});

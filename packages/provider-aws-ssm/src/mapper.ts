@@ -5,6 +5,7 @@
 import type { Parameter, ParameterMetadata } from '@aws-sdk/client-ssm';
 import { ParameterType } from '@aws-sdk/client-ssm';
 import type { DetailField, Item, ItemType } from '@paramhub/types';
+import { lastSegment } from '@paramhub/types';
 
 export function ssmTypeToItemType(type: string | undefined): ItemType {
   switch (type) {
@@ -26,12 +27,6 @@ export function itemTypeToSsmType(type: ItemType): ParameterType {
     default:
       return ParameterType.STRING;
   }
-}
-
-/** Last `/`-delimited segment of a parameter name (its display name). */
-function lastSegment(name: string): string {
-  const segments = name.split('/').filter(Boolean);
-  return segments[segments.length - 1] ?? name;
 }
 
 function buildArn(

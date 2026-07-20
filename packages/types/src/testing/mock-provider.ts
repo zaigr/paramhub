@@ -18,9 +18,19 @@ import type {
   DetailField,
   SearchOptions,
   SearchResult,
+  BranchNode,
+  BrowseOptions,
+  BrowseResult,
+  LeafNode,
+  TreeNode,
   Command,
   CommandContext,
 } from '../index.js';
+import { lastSegment } from '../index.js';
+
+/** The mock hierarchy mirrors SSM: '/'-delimited, rooted at '/'. */
+const MOCK_DELIMITER = '/';
+const MOCK_ROOT_PATH = '/';
 
 /** Pre-populated mock items simulating a typical SSM parameter store. */
 const MOCK_ITEMS: Item[] = [
@@ -177,8 +187,10 @@ const MOCK_ITEMS: Item[] = [
 /**
  * In-memory mock provider implementing the full Provider interface.
  *
- * Supports search (path/name filtering), CRUD operations, and
- * contributes example commands to the command registry.
+ * Supports search (path/name filtering), tree browsing, CRUD operations, and
+ * contributes example commands to the command registry. Deliberately dual-mode
+ * — flat *and* browsable — so the conformance suite exercises both halves of
+ * the contract against a single provider.
  */
 export class MockProvider implements Provider {
   readonly id = 'mock';
@@ -245,6 +257,7 @@ export class MockProvider implements Provider {
       canSearch: true,
       canSwitchRegion: true,
       canSwitchAccount: true,
+      hierarchy: { delimiter: MOCK_DELIMITER, rootPath: MOCK_ROOT_PATH },
       supportedItemTypes: ['string', 'secure', 'binary', 'json', 'list'],
       customActions: [
         {
@@ -335,9 +348,13 @@ export class MockProvider implements Provider {
 
     let filtered = this.items;
 
-    // Filter by path prefix
+    // Matched on a segment boundary so '/app/production' cannot also capture
+    // '/app/production2'.
     if (pathPrefix) {
-      filtered = filtered.filter((item) => item.path.startsWith(pathPrefix));
+      const prefix = pathPrefix.endsWith(MOCK_DELIMITER)
+        ? pathPrefix
+        : pathPrefix + MOCK_DELIMITER;
+      filtered = filtered.filter((item) => item.path.startsWith(prefix));
     }
 
     // Filter by query (match against path and name)
@@ -363,6 +380,49 @@ export class MockProvider implements Provider {
       })),
       nextToken:
         endIndex < filtered.length ? String(endIndex) : undefined,
+    };
+  }
+
+  async browse(options: BrowseOptions): Promise<BrowseResult> {
+    const { path = MOCK_ROOT_PATH, maxResults = 10, nextToken } = options;
+
+    // Root is already the delimiter; deeper branches ('/app') are not
+    // delimiter-terminated, so normalize before matching — otherwise '/app'
+    // would also capture '/apple/...'.
+    const prefix = path.endsWith(MOCK_DELIMITER) ? path : path + MOCK_DELIMITER;
+
+    const branches = new Map<string, BranchNode>();
+    const leaves: LeafNode[] = [];
+
+    for (const item of this.items) {
+      if (!item.path.startsWith(prefix)) {
+        continue;
+      }
+      const rest = item.path.slice(prefix.length);
+      const cut = rest.indexOf(MOCK_DELIMITER);
+      if (cut === -1) {
+        leaves.push({ kind: 'leaf', item: { ...item, value: undefined } });
+        continue;
+      }
+      const branchPath = prefix + rest.slice(0, cut);
+      if (!branches.has(branchPath)) {
+        branches.set(branchPath, {
+          kind: 'branch',
+          path: branchPath,
+          name: lastSegment(branchPath, MOCK_DELIMITER),
+        });
+      }
+    }
+
+    // Branches before leaves, the order a tree UI renders a level in.
+    const nodes: TreeNode[] = [...branches.values(), ...leaves];
+
+    const startIndex = nextToken ? parseInt(nextToken, 10) : 0;
+    const endIndex = startIndex + maxResults;
+
+    return {
+      nodes: nodes.slice(startIndex, endIndex),
+      nextToken: endIndex < nodes.length ? String(endIndex) : undefined,
     };
   }
 
@@ -440,13 +500,10 @@ export class MockProvider implements Provider {
       throw new Error(`Item already exists: ${path}`);
     }
 
-    const segments = path.split('/');
-    const name = segments[segments.length - 1] ?? path;
-
     const item: Item = {
       id: path,
       path,
-      name,
+      name: lastSegment(path, MOCK_DELIMITER),
       type,
       value,
       metadata: {

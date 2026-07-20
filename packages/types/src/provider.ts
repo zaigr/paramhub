@@ -7,6 +7,7 @@
 
 import type { Item, ItemType, DetailField } from './items.js';
 import type { SearchOptions, SearchResult } from './search.js';
+import type { BrowseOptions, BrowseResult, HierarchyInfo } from './tree.js';
 import type { CustomAction } from './actions.js';
 import type { CustomTab } from './tabs.js';
 import type { ProviderConfigField } from './config.js';
@@ -40,12 +41,14 @@ export interface ProviderCapabilities {
   canDelete: boolean;
   /** Whether the provider supports creating new parameters. */
   canCreate: boolean;
-  /** Whether the provider supports search/filtering. */
+  /** Whether the provider supports search/filtering. False when `search()` is absent. */
   canSearch: boolean;
   /** Whether the provider supports switching regions. */
   canSwitchRegion: boolean;
   /** Whether the provider supports switching accounts/profiles. */
   canSwitchAccount: boolean;
+  /** Hierarchy description. Absent when the provider is flat and has no `browse()`. */
+  hierarchy?: HierarchyInfo;
   /** The item types this provider can work with. */
   supportedItemTypes: ItemType[];
   /** Provider-specific custom actions available for items. */
@@ -117,8 +120,15 @@ export interface Provider {
 
   // ── Data ──
 
-  /** Search for items matching the given options. */
-  search(options: SearchOptions): Promise<SearchResult>;
+  /**
+   * Search for items matching the given options.
+   *
+   * A provider must implement `search`, `browse`, or both. Omit this when the
+   * backing store has no usable name search (S3) and expose data via `browse()`.
+   */
+  search?(options: SearchOptions): Promise<SearchResult>;
+  /** Enumerate the direct children of a branch. Requires `capabilities.hierarchy`. */
+  browse?(options: BrowseOptions): Promise<BrowseResult>;
   /** Get a single item by ID (without loading its value). */
   getItem(id: string): Promise<Item>;
   /** Get the decrypted/raw value of an item. */

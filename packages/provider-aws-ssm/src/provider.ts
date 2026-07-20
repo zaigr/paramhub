@@ -30,6 +30,7 @@ import type {
   SearchOptions,
   SearchResult,
 } from '@paramhub/types';
+import { lastSegment } from '@paramhub/types';
 
 import { createSsmClient, createStsClient, describeAwsError } from './auth.js';
 import {
@@ -335,11 +336,10 @@ export class AwsSsmProvider implements Provider {
         }),
       ),
     );
-    const segments = path.split('/').filter(Boolean);
     return {
       id: path,
       path,
-      name: segments[segments.length - 1] ?? path,
+      name: lastSegment(path),
       type,
       value: undefined,
       metadata: { version: res.Version, lastModified: new Date() },
